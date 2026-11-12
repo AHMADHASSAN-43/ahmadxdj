@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { fileURLToPath } from 'url';
 import config from '../config.js';
 import { cmd, commands } from '../command.js';
@@ -52,7 +51,7 @@ ${BOT_NAME}
         const imageToUse = "https://files.catbox.moe/lojbeu.jpg";
 
         const contextInfo = {
-            mentionedJid: [sender],
+            mentionedJid: [m.sender],
             forwardingScore: 999,
             isForwarded: true,
             forwardedNewsletterMessageInfo: {
@@ -63,14 +62,23 @@ ${BOT_NAME}
         };
 
         // 1. Send with image (same like menu)
-        try {
-            const imgRes = await axios.get(imageToUse, { responseType: 'arraybuffer', timeout: 15000 });
-            await conn.sendMessage(from, {
-                image: Buffer.from(imgRes.data),
-                caption: msg,
-                contextInfo
-            }, { quoted: mek });
-        } catch (imgErr) {
+        // Pehle apni image, na chale to menu wali image, phir text
+        let sent = false;
+        for (const img of [imageToUse, "https://files.catbox.moe/2maqd9.jpg"]) {
+            try {
+                await conn.sendMessage(from, {
+                    image: { url: img },
+                    caption: msg,
+                    contextInfo
+                }, { quoted: mek });
+                sent = true;
+                break;
+            } catch (e) {
+                console.log("Image failed (" + img + "):", e.message);
+            }
+        }
+        if (!sent) {
+            const imgErr = { message: "all images failed" };
             // Agar image fail ho jaye (catbox down), to simple text bhej do
             console.log("Ping image failed, sending text:", imgErr.message);
             await conn.sendMessage(from, {
