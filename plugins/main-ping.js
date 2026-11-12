@@ -1,34 +1,16 @@
 import { fileURLToPath } from 'url';
 import { cmd } from '../command.js';
-import axios from 'axios';
 
 const __filename = fileURLToPath(import.meta.url);
 
-// Pehle lojbeu pic, na chale to menu wali pic
-const IMAGES = [
-    "https://files.catbox.moe/lojbeu.jpg",
-    "https://files.catbox.moe/2maqd9.jpg"
-];
+const IMAGE_URL = "https://files.catbox.moe/lojbeu.jpg";
 
-// Image pehle download hoti hai (4 sec limit) aur yaad rakhi jati hai,
-// is se ping fast aati hai aur catbox down ho to bot atakta nahi.
-const imageCache = {};
-const getImage = async (url) => {
-    if (imageCache[url]) return imageCache[url];
-    try {
-        const res = await axios.get(url, { responseType: 'arraybuffer', timeout: 4000 });
-        const buf = Buffer.from(res.data);
-        if (buf.length > 1000) {
-            imageCache[url] = buf;
-            return buf;
-        }
-    } catch (e) {
-        console.log("Ping image download failed:", url, e.message);
-    }
-    return null;
-};
-// Bot start hote hi image tayyar rakho
-getImage(IMAGES[0]).then(() => {}).catch(() => {});
+// Image ke liye time limit, warna text bhej do
+const withTimeout = (promise, ms) =>
+    Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))
+    ]);
 
 cmd({
     pattern: "ping",
@@ -45,13 +27,11 @@ async (conn, mek, m, { from, reply }) => {
 
         const reactionEmojis = ['💗', '👀', '🫀', '🎀', '🦋'];
         const reactionEmoji = reactionEmojis[Math.floor(Math.random() * reactionEmojis.length)];
-
-        // Quick reaction
-        await conn.sendMessage(from, { react: { text: reactionEmoji, key: mek.key } });
+        conn.sendMessage(from, { react: { text: reactionEmoji, key: mek.key } }).catch(() => {});
 
         const responseTime = Date.now() - start;
 
-        const BOT_NAME = "ᴀʜᴍᴀᴅ-ᴍِᴅ";
+        const BOT_NAME = "ᴀʜᴍᴀᴅ-ᴍᴅ";
         const msg = `
 ${BOT_NAME}
 
@@ -72,7 +52,7 @@ ${BOT_NAME}
             }
         };
 
-        // Newsletter unfollow peeche chalta hai (ping slow nahi hoti)
+        // Newsletter unfollow peeche chalta hai
         (async () => {
             try {
                 await conn.newsletterUnfollow('120363411252473802@newsletter');
@@ -82,25 +62,18 @@ ${BOT_NAME}
             }
         })();
 
-        // Menu ki tarah: image + caption, warna simple text
-        let sent = false;
-        for (const url of IMAGES) {
-            const buf = await getImage(url);
-            if (!buf) continue;
-            try {
-                await conn.sendMessage(from, {
-                    image: buf,
+        // Pehle DP ke sath, catbox down ho to simple text
+        try {
+            await withTimeout(
+                conn.sendMessage(from, {
+                    image: { url: IMAGE_URL },
                     caption: msg,
                     contextInfo
-                }, { quoted: mek });
-                sent = true;
-                break;
-            } catch (e) {
-                console.log("Ping image send failed:", e.message);
-            }
-        }
-
-        if (!sent) {
+                }, { quoted: mek }),
+                8000
+            );
+        } catch (e) {
+            console.log("Ping image failed, sending text:", e.message);
             await conn.sendMessage(from, { text: msg, contextInfo }, { quoted: mek });
         }
 
