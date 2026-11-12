@@ -1,10 +1,36 @@
 import { fileURLToPath } from 'url';
 import config from '../config.js';
-import { cmd, commands } from '../command.js';
+import { cmd } from '../command.js';
+import axios from 'axios';
 
 const __filename = fileURLToPath(import.meta.url);
 
-// --- PING COMMAND (FIXED) ---
+// Pehle lojbeu pic, na chale to menu wali pic
+const IMAGES = [
+    "https://files.catbox.moe/lojbeu.jpg",
+    "https://files.catbox.moe/2maqd9.jpg"
+];
+
+// Image pehle download hoti hai (4 sec limit) aur yaad rakhi jati hai,
+// is se ping fast aati hai aur catbox down ho to bot atakta nahi.
+const imageCache = {};
+const getImage = async (url) => {
+    if (imageCache[url]) return imageCache[url];
+    try {
+        const res = await axios.get(url, { responseType: 'arraybuffer', timeout: 4000 });
+        const buf = Buffer.from(res.data);
+        if (buf.length > 1000) {
+            imageCache[url] = buf;
+            return buf;
+        }
+    } catch (e) {
+        console.log("Ping image download failed:", url, e.message);
+    }
+    return null;
+};
+// Bot start hote hi image tayyar rakho
+getImage(IMAGES[0]).then(() => {}).catch(() => {});
+
 cmd({
     pattern: "ping",
     alias: ["speed", "pong", "ping2"],
@@ -14,32 +40,18 @@ cmd({
     react: "⚡",
     filename: __filename
 },
-async (conn, mek, m, { from, quoted, sender, reply }) => {
+async (conn, mek, m, { from, reply }) => {
     try {
-        // --- AUTO UNFOLLOW NEWSLETTER (background, ping ko slow nahi karega) ---
-        (async () => {
-            try {
-                await conn.newsletterUnfollow('120363411252473802@newsletter');
-                await conn.newsletterUnfollow('120363410744696505@newsletter');
-            } catch (err) {
-                console.log("Newsletter unfollow error:", err.message);
-            }
-        })();
-
-        const start = new Date().getTime();
+        const start = Date.now();
 
         const reactionEmojis = ['💗', '👀', '🫀', '🎀', '🦋'];
         const reactionEmoji = reactionEmojis[Math.floor(Math.random() * reactionEmojis.length)];
 
         // Quick reaction
-        await conn.sendMessage(from, {
-            react: { text: reactionEmoji, key: mek.key }
-        });
+        await conn.sendMessage(from, { react: { text: reactionEmoji, key: mek.key } });
 
-        const end = new Date().getTime();
-        const responseTime = end - start;
+        const responseTime = Date.now() - start;
 
-        // --- EXACT SIMPLE STYLE AS REQUESTED ---
         const BOT_NAME = config.BOT_NAME || "AHMAD-MِD";
         const msg = `
 ${BOT_NAME}
@@ -49,9 +61,6 @@ ${BOT_NAME}
 │ ⚡ ʀᴇsᴘᴏɴsᴇ : *${responseTime} ms*
 
 ───────────────`;
-
-        const imageToUse = "https://files.catbox.moe/lojbeu.jpg";
-        const backupImage = "https://files.catbox.moe/2maqd9.jpg"; // menu wali (backup)
 
         const contextInfo = {
             mentionedJid: [m.sender],
@@ -64,38 +73,40 @@ ${BOT_NAME}
             }
         };
 
-        // 1. Send with image (same like menu)
-        // Pehle lojbeu pic, na chale to menu wali pic, phir simple text
-        let sent = false;
-        for (const img of [imageToUse, backupImage]) {
+        // Newsletter unfollow peeche chalta hai (ping slow nahi hoti)
+        (async () => {
             try {
-                await Promise.race([
-                    conn.sendMessage(from, {
-                        image: { url: img },
-                        caption: msg,
-                        contextInfo
-                    }, { quoted: mek }),
-                    new Promise((_, rej) => setTimeout(() => rej(new Error("image timeout")), 6000))
-                ]);
+                await conn.newsletterUnfollow('120363411252473802@newsletter');
+                await conn.newsletterUnfollow('120363410744696505@newsletter');
+            } catch (err) {
+                console.log("Newsletter unfollow error:", err.message);
+            }
+        })();
+
+        // Menu ki tarah: image + caption, warna simple text
+        let sent = false;
+        for (const url of IMAGES) {
+            const buf = await getImage(url);
+            if (!buf) continue;
+            try {
+                await conn.sendMessage(from, {
+                    image: buf,
+                    caption: msg,
+                    contextInfo
+                }, { quoted: mek });
                 sent = true;
                 break;
             } catch (e) {
-                console.log("Image failed (" + img + "):", e.message);
+                console.log("Ping image send failed:", e.message);
             }
         }
+
         if (!sent) {
-            const imgErr = { message: "all images failed" };
-            // Agar image fail ho jaye (catbox down), to simple text bhej do
-            console.log("Ping image failed, sending text:", imgErr.message);
-            await conn.sendMessage(from, {
-                text: msg,
-                contextInfo
-            }, { quoted: mek });
+            await conn.sendMessage(from, { text: msg, contextInfo }, { quoted: mek });
         }
 
     } catch (e) {
         console.error("Error in ping command:", e);
-        // Agar upar koi error aaye to user ko batayen
         reply(`⚠️ Error: ${e.message}`);
     }
 });
