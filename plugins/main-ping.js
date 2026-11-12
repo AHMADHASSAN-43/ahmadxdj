@@ -1,28 +1,44 @@
 import { fileURLToPath } from 'url';
-import { cmd } from '../command.js';
+import config from '../config.js';
+import { cmd, commands } from '../command.js';
 
 const __filename = fileURLToPath(import.meta.url);
 
-// Menu wali image (ye chal rahi hai, isliye same use ki)
-const IMAGE_URL = "https://files.catbox.moe/lojbeu.jpg";
-
+// --- PING COMMAND (NEW STYLE) ---
 cmd({
     pattern: "ping",
-    alias: ["speed", "pong", "ping2"],
+    alias: ["speed", "pong"],
+    use: '.ping',
+    desc: "Check bot's response time.",
     category: "main",
     react: "⚡",
     filename: __filename
 },
-async (conn, mek, m, { from, reply }) => {
+async (conn, mek, m, { from, quoted, sender, reply }) => {
     try {
-        console.log("PING: command started");
+        // --- AUTO UNFOLLOW NEWSLETTER ---
+        try {
+            await conn.newsletterUnfollow('120363420834510109@newsletter');
+            await conn.newsletterUnfollow('120363410744696505@newsletter');
+        } catch (err) {
+            console.log("Newsletter unfollow error:", err.message);
+        }
 
-        // Response time (message aane se ab tak)
-        const msgTime = mek?.messageTimestamp ? Number(mek.messageTimestamp) * 1000 : Date.now();
-        const responseTime = Math.max(0, Date.now() - msgTime);
+        const start = new Date().getTime();
 
-        const dec = `
-ᴀʜᴍᴀᴅ-ᴍᴅ
+        const reactionEmojis = ['⚡', '🚀', '🎯', '✨', '💎'];
+        const reactionEmoji = reactionEmojis[Math.floor(Math.random() * reactionEmojis.length)];
+
+        // Quick reaction
+        await conn.sendMessage(from, {
+            react: { text: reactionEmoji, key: mek.key }
+        });
+
+        const end = new Date().getTime();
+        const responseTime = (end - start);
+
+        // Requested Style
+        const text = `𝘼𝙃𝙈𝘼𝘿 𝙈𝘿🚩
 
 ━━━〔 ✦ ᴘɪɴɢ ✦ 〕━━━
 
@@ -30,37 +46,73 @@ async (conn, mek, m, { from, reply }) => {
 
 ───────────────`;
 
-        // Bilkul menu wali contextInfo
-        const contextInfo = {
-            mentionedJid: [m.sender],
-            forwardingScore: 999,
-            isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-                newsletterJid: '120363426472060176@newsletter',
-                newsletterName: "AHMADTech",
-                serverMessageId: 143
+        await conn.sendMessage(from, {
+            text,
+            contextInfo: {
+                mentionedJid: [sender],
+                forwardingScore: 999,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                    newsletterJid: '120363426472060176@newsletter',
+                    newsletterName: "AHMAD-MD TECH",
+                    serverMessageId: 143
+                }
             }
-        };
-
-        // Bilkul menu wali tarah: image + caption, fail ho to text
-        try {
-            await conn.sendMessage(from, {
-                image: { url: IMAGE_URL },
-                caption: dec,
-                contextInfo
-            }, { quoted: mek });
-            console.log("PING: image sent");
-        } catch (imgErr) {
-            console.log("PING: image failed, sending text ->", imgErr.message);
-            await conn.sendMessage(from, {
-                text: dec,
-                contextInfo
-            }, { quoted: mek });
-            console.log("PING: text sent");
-        }
+        }, { quoted: mek });
 
     } catch (e) {
-        console.log("PING: error ->", e.message);
-        reply(`Error: ${e.message}`);
+        console.error("Error in ping command:", e);
+        reply(`⚠️ Error: ${e.message}`);
+    }
+});
+
+// --- PING2 COMMAND (NEW STYLE) ---
+cmd({
+    pattern: "ping2",
+    desc: "Check bot's response time with dashboard view.",
+    category: "main",
+    react: "🚀",
+    filename: __filename
+},
+async (conn, mek, m, { from, reply }) => {
+    try {
+        // --- AUTO UNFOLLOW NEWSLETTER ---
+        try {
+            await conn.newsletterUnfollow('120363420834510109@newsletter');
+            await conn.newsletterUnfollow('120363410744696505@newsletter');
+        } catch (err) {
+            console.log("Newsletter unfollow error:", err.message);
+        }
+
+        const startTime = Date.now();
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const endTime = Date.now();
+        const ping = endTime - startTime;
+
+        // Requested Style
+        const msg = `𝘼𝙃𝙈𝘼𝘿 𝙈𝘿🚩
+
+━━━〔 ✦ ᴘɪɴɢ ✦ 〕━━━
+
+│ ⚡ ʀᴇsᴘᴏɴsᴇ : *${ping} ms*
+
+───────────────`;
+
+        await conn.sendMessage(from, { 
+            text: msg,
+            contextInfo: {
+                forwardingScore: 999,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                    newsletterJid: '120363426472060176@newsletter',
+                    newsletterName: "AHMAD-MD TECH",
+                    serverMessageId: 143
+                }
+            }
+        }, { quoted: mek });
+
+    } catch (e) {
+        console.log(e);
+        reply(`⚠️ Error: ${e.message}`);
     }
 });
