@@ -5,7 +5,6 @@ const __filename = fileURLToPath(import.meta.url);
 
 const IMAGE_URL = "https://files.catbox.moe/lojbeu.jpg";
 
-// Image ke liye time limit, warna text bhej do
 const withTimeout = (promise, ms) =>
     Promise.race([
         promise,
@@ -22,18 +21,17 @@ cmd({
     filename: __filename
 },
 async (conn, mek, m, { from, reply }) => {
-    try {
-        const start = Date.now();
+    console.log("PING: command started");
+    const start = Date.now();
 
-        const reactionEmojis = ['💗', '👀', '🫀', '🎀', '🦋'];
-        const reactionEmoji = reactionEmojis[Math.floor(Math.random() * reactionEmojis.length)];
-        conn.sendMessage(from, { react: { text: reactionEmoji, key: mek.key } }).catch(() => {});
+    const reactionEmojis = ['💗', '👀', '🫀', '🎀', '🦋'];
+    const reactionEmoji = reactionEmojis[Math.floor(Math.random() * reactionEmojis.length)];
+    conn.sendMessage(from, { react: { text: reactionEmoji, key: mek.key } }).catch(() => {});
 
-        const responseTime = Date.now() - start;
+    const responseTime = Date.now() - start;
 
-        const BOT_NAME = "ᴀʜᴍᴀᴅ-ᴍᴅ";
-        const msg = `
-${BOT_NAME}
+    const msg = `
+ᴀʜᴍᴀᴅ-ᴍᴅ
 
 ━━━〔 ✦ ᴘɪɴɢ ✦ 〕━━━
 
@@ -41,44 +39,50 @@ ${BOT_NAME}
 
 ───────────────`;
 
-        const contextInfo = {
-            mentionedJid: [m.sender],
-            forwardingScore: 999,
-            isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-                newsletterJid: '120363426472060176@newsletter',
-                newsletterName: "AHMAD-MD TECH",
-                serverMessageId: 143
-            }
-        };
-
-        // Newsletter unfollow peeche chalta hai
-        (async () => {
-            try {
-                await conn.newsletterUnfollow('120363411252473802@newsletter');
-                await conn.newsletterUnfollow('120363410744696505@newsletter');
-            } catch (err) {
-                console.log("Newsletter unfollow error:", err.message);
-            }
-        })();
-
-        // Pehle DP ke sath, catbox down ho to simple text
-        try {
-            await withTimeout(
-                conn.sendMessage(from, {
-                    image: { url: IMAGE_URL },
-                    caption: msg,
-                    contextInfo
-                }, { quoted: mek }),
-                8000
-            );
-        } catch (e) {
-            console.log("Ping image failed, sending text:", e.message);
-            await conn.sendMessage(from, { text: msg, contextInfo }, { quoted: mek });
+    const contextInfo = {
+        mentionedJid: m.sender ? [m.sender] : [],
+        forwardingScore: 999,
+        isForwarded: true,
+        forwardedNewsletterMessageInfo: {
+            newsletterJid: '120363426472060176@newsletter',
+            newsletterName: "AHMAD-MD TECH",
+            serverMessageId: 143
         }
+    };
 
+    // 1) DP ke sath
+    try {
+        await withTimeout(
+            conn.sendMessage(from, {
+                image: { url: IMAGE_URL },
+                caption: msg,
+                contextInfo
+            }, { quoted: mek }),
+            8000
+        );
+        console.log("PING: image sent");
+        return;
     } catch (e) {
-        console.error("Error in ping command:", e);
-        reply(`⚠️ Error: ${e.message}`);
+        console.log("PING: image failed ->", e.message);
+    }
+
+    // 2) Simple text (contextInfo ke sath)
+    try {
+        await withTimeout(
+            conn.sendMessage(from, { text: msg, contextInfo }, { quoted: mek }),
+            8000
+        );
+        console.log("PING: text sent");
+        return;
+    } catch (e) {
+        console.log("PING: text failed ->", e.message);
+    }
+
+    // 3) Aakhri fallback: bot ka apna reply
+    try {
+        await reply(msg);
+        console.log("PING: reply sent");
+    } catch (e) {
+        console.log("PING: reply failed ->", e.message);
     }
 });
