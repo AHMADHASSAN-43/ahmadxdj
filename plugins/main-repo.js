@@ -1,16 +1,22 @@
 // AHMAD Tech
-
 import config from '../config.js';
-import { cmd, commands } from '../command.js';
-import os from "os";
-import { runtime, sleep } from '../lib/functions.js';
-import axios from 'axios';
-import fs from 'fs';
-import path from 'path';
+import { cmd } from '../command.js';
+import { runtime } from '../lib/functions.js';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+
+const getDP = async (conn, jid) => {
+    const botJid = conn.user?.id ? conn.user.id.split(':')[0].split('@')[0] + '@s.whatsapp.net' : null;
+    for (const j of [jid, botJid]) {
+        if (!j) continue;
+        try {
+            const url = await conn.profilePictureUrl(j, 'image');
+            if (url) return url;
+        } catch (e) {}
+    }
+    return null;
+};
 
 cmd({
     pattern: "repo",
@@ -20,18 +26,15 @@ cmd({
     category: "main",
     filename: __filename,
 },
-async (conn, mek, m, { from, reply, userConfig }) => {
+async (conn, mek, m, { from, sender, reply, userConfig }) => {
     try {
-        const BOT_NAME = userConfig?.BOT_NAME || config.BOT_NAME || 'AHMAD-MِD';
+        const BOT_NAME = userConfig?.BOT_NAME || config.BOT_NAME || 'AHMAD-MD';
         const OWNER_NAME = userConfig?.OWNER_NAME || config.OWNER_NAME || 'AHMAD-TECH';
-
         const deployLink = 'https://ahmad-md.vercel.app';
 
-        // --- EXACT SIMPLE STYLE LIKE PING / ALIVE ---
-        const msg = `
-${BOT_NAME}
+        const msg = `${BOT_NAME}
 
-━━━〔 ✦ ᴀʜᴍᴀᴅ-ᴍِᴅ ʀᴇᴘᴏ ✦ 〕━━━
+━━━〔 ✦ ᴀʜᴍᴀᴅ-ᴍᴅ ʀᴇᴘᴏ ✦ 〕━━━
 
 │ 👤 ᴏᴡɴᴇʀ : *${OWNER_NAME}*
 │ 📦 ᴠᴇʀsɪᴏɴ : *20.0*
@@ -46,35 +49,14 @@ ${BOT_NAME}
 
 > *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʜᴍᴀᴅ ʜᴀssᴀɴ*`;
 
-        const imageToUse = "https://files.catbox.moe/yx2kn6.jpg";
+        const dp = (await getDP(conn, sender || m.sender)) || "https://files.catbox.moe/yx2kn6.jpg";
 
-        const contextInfo = {
-            mentionedJid: [m.sender],
-            forwardingScore: 999,
-            isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-                newsletterJid: '120363426472060176@newsletter',
-                newsletterName: `${BOT_NAME} - OFFICIAL`,
-                serverMessageId: 143
-            }
-        };
-
-        // 1. Send with image (same like ping/alive)
         try {
-            await conn.sendMessage(from, {
-                image: { url: imageToUse },
-                caption: msg,
-                contextInfo
-            }, { quoted: mek });
+            await conn.sendMessage(from, { image: { url: dp }, caption: msg }, { quoted: mek });
         } catch (imgErr) {
             console.log("Repo image failed, sending text:", imgErr.message);
-            // Fallback: simple text (same style) if catbox down
-            await conn.sendMessage(from, {
-                text: msg,
-                contextInfo
-            }, { quoted: mek });
+            await conn.sendMessage(from, { text: msg }, { quoted: mek });
         }
-
     } catch (error) {
         console.error("Error in repo command:", error);
         reply("❌ Error: Script fetch nahi ho saki.");
