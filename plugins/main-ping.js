@@ -1,5 +1,4 @@
 import { fileURLToPath } from 'url';
-import config from '../config.js';
 import { cmd } from '../command.js';
 import axios from 'axios';
 
@@ -52,7 +51,7 @@ async (conn, mek, m, { from, reply }) => {
 
         const responseTime = Date.now() - start;
 
-        const BOT_NAME = config.BOT_NAME || "AHMAD-MِD";
+        const BOT_NAME = "ᴀʜᴍᴀᴅ-ᴍِᴅ";
         const msg = `
 ${BOT_NAME}
 
