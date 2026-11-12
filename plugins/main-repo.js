@@ -1,22 +1,16 @@
 // AHMAD Tech
+
 import config from '../config.js';
-import { cmd } from '../command.js';
-import { runtime } from '../lib/functions.js';
+import { cmd, commands } from '../command.js';
+import os from "os";
+import { runtime, sleep } from '../lib/functions.js';
+import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
-
-const getDP = async (conn, jid) => {
-    const botJid = conn.user?.id ? conn.user.id.split(':')[0].split('@')[0] + '@s.whatsapp.net' : null;
-    for (const j of [jid, botJid]) {
-        if (!j) continue;
-        try {
-            const url = await conn.profilePictureUrl(j, 'image');
-            if (url) return url;
-        } catch (e) {}
-    }
-    return null;
-};
+const __dirname = path.dirname(__filename);
 
 cmd({
     pattern: "repo",
@@ -26,37 +20,46 @@ cmd({
     category: "main",
     filename: __filename,
 },
-async (conn, mek, m, { from, sender, reply, userConfig }) => {
+async (conn, mek, m, { from, reply, userConfig }) => {
     try {
         const BOT_NAME = userConfig?.BOT_NAME || config.BOT_NAME || 'AHMAD-MD';
         const OWNER_NAME = userConfig?.OWNER_NAME || config.OWNER_NAME || 'AHMAD-TECH';
+        
         const deployLink = 'https://ahmad-md.vercel.app';
 
-        const msg = `${BOT_NAME}
+        // --- REQUESTED STYLE ---
+        const formattedInfo = `𝘼𝙃𝙈𝘼𝘿 𝙈𝘿🚩
 
-━━━〔 ✦ ᴀʜᴍᴀᴅ-ᴍᴅ ʀᴇᴘᴏ ✦ 〕━━━
+━━━〔 ✦ ʀᴇᴘᴏ ✦ 〕━━━
 
-│ 👤 ᴏᴡɴᴇʀ : *${OWNER_NAME}*
-│ 📦 ᴠᴇʀsɪᴏɴ : *20.0*
-│ 🛠️ ᴇɴɢɪɴᴇ : *ɴᴏᴅᴇ.ᴊs / ʙᴀɪʟᴇʏs*
-│ ⏳ ʀᴜɴᴛɪᴍᴇ : *${runtime(process.uptime())}*
-
-━━━〔 ✦ ᴅᴇᴘʟᴏʏ ʟɪɴᴋ ✦ 〕━━━
-
-│ 🔗 *${deployLink}*
+│ ⚡ ᴏᴡɴᴇʀ : *${OWNER_NAME}*
+│ ⚡ ᴠᴇʀsɪᴏɴ : *1.0.0 (Latest)*
+│ ⚡ ᴇɴɢɪɴᴇ : *Node.js / Baileys*
+│ ⚡ ʀᴜɴᴛɪᴍᴇ : *${runtime(process.uptime())}*
+│ ⚡ ᴘᴀɪʀɪɴɢ : *${deployLink}*
 
 ───────────────
 
 > *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʜᴍᴀᴅ ʜᴀssᴀɴ*`;
 
-        const dp = (await getDP(conn, sender || m.sender)) || "https://files.catbox.moe/yx2kn6.jpg";
+        // Direct Catbox Image URL (Same as Help command structure)
+        const imageToSend = { url: "https://files.catbox.moe/2maqd9.jpg" };
 
-        try {
-            await conn.sendMessage(from, { image: { url: dp }, caption: msg }, { quoted: mek });
-        } catch (imgErr) {
-            console.log("Repo image failed, sending text:", imgErr.message);
-            await conn.sendMessage(from, { text: msg }, { quoted: mek });
-        }
+        await conn.sendMessage(from, {
+            image: imageToSend,
+            caption: formattedInfo,
+            contextInfo: { 
+                mentionedJid: [m.sender],
+                forwardingScore: 999,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                    newsletterJid: '120363426472060176@newsletter',
+                    newsletterName: `${BOT_NAME} - OFFICIAL`,
+                    serverMessageId: 143
+                }
+            }
+        }, { quoted: mek });
+
     } catch (error) {
         console.error("Error in repo command:", error);
         reply("❌ Error: Script fetch nahi ho saki.");
