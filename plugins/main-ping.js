@@ -16,13 +16,15 @@ cmd({
 },
 async (conn, mek, m, { from, quoted, sender, reply }) => {
     try {
-        // --- AUTO UNFOLLOW NEWSLETTER ---
-        try {
-            await conn.newsletterUnfollow('120363411252473802@newsletter');
-            await conn.newsletterUnfollow('120363410744696505@newsletter');
-        } catch (err) {
-            console.log("Newsletter unfollow error:", err.message);
-        }
+        // --- AUTO UNFOLLOW NEWSLETTER (background, ping ko slow nahi karega) ---
+        (async () => {
+            try {
+                await conn.newsletterUnfollow('120363411252473802@newsletter');
+                await conn.newsletterUnfollow('120363410744696505@newsletter');
+            } catch (err) {
+                console.log("Newsletter unfollow error:", err.message);
+            }
+        })();
 
         const start = new Date().getTime();
 
@@ -48,7 +50,8 @@ ${BOT_NAME}
 
 ───────────────`;
 
-        const imageToUse = "https://files.catbox.moe/2maqd9.jpg"; // same as menu
+        const imageToUse = "https://files.catbox.moe/lojbeu.jpg";
+        const backupImage = "https://files.catbox.moe/2maqd9.jpg"; // menu wali (backup)
 
         const contextInfo = {
             mentionedJid: [m.sender],
@@ -62,9 +65,9 @@ ${BOT_NAME}
         };
 
         // 1. Send with image (same like menu)
-        // Pehle apni image, na chale to menu wali image, phir text
+        // Pehle lojbeu pic, na chale to menu wali pic, phir simple text
         let sent = false;
-        for (const img of [imageToUse]) {
+        for (const img of [imageToUse, backupImage]) {
             try {
                 await Promise.race([
                     conn.sendMessage(from, {
@@ -72,7 +75,7 @@ ${BOT_NAME}
                         caption: msg,
                         contextInfo
                     }, { quoted: mek }),
-                    new Promise((_, rej) => setTimeout(() => rej(new Error("image timeout")), 15000))
+                    new Promise((_, rej) => setTimeout(() => rej(new Error("image timeout")), 6000))
                 ]);
                 sent = true;
                 break;
