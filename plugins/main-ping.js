@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 // --- PING COMMAND (SIMPLE STYLE LIKE MENU) ---
 cmd({
     pattern: "ping",
-    alias: ["speed", "pong" ,"ping2"],
+    alias: ["speed", "pong", "ping2"],
     use: '.ping',
     desc: "Check bot's response time.",
     category: "main",
@@ -30,9 +30,11 @@ async (conn, mek, m, { from, quoted, sender, reply }) => {
         const reactionEmoji = reactionEmojis[Math.floor(Math.random() * reactionEmojis.length)];
 
         // Quick reaction
-        await conn.sendMessage(from, {
-            react: { text: reactionEmoji, key: mek.key }
-        });
+        try {
+            await conn.sendMessage(from, {
+                react: { text: reactionEmoji, key: mek.key }
+            });
+        } catch (_) {}
 
         const end = new Date().getTime();
         const responseTime = end - start;
@@ -48,8 +50,6 @@ ${BOT_NAME}
 
 ───────────────`;
 
-        const imageToUse = "https://files.catbox.moe/lojbeu.jpg";
-
         const contextInfo = {
             mentionedJid: [sender],
             forwardingScore: 999,
@@ -61,16 +61,27 @@ ${BOT_NAME}
             }
         };
 
-        // 1. Send with image (same like menu)
+        // 1. Image ke saath send karne ki koshish
+        // 2. Agar catbox down / image fail ho to SIMPLE TEXT bhejo (fallback)
+        let sent = false;
+
         try {
+            // Pehle image URL verify karo ke actually load ho rahi hai
+            const testRes = await fetch("https://files.catbox.moe/lojbeu.jpg", { method: 'HEAD' });
+            if (!testRes.ok) throw new Error(`Image not reachable (status ${testRes.status})`);
+
             await conn.sendMessage(from, {
-                image: { url: imageToUse },
+                image: { url: "https://files.catbox.moe/lojbeu.jpg" },
                 caption: msg,
                 contextInfo
             }, { quoted: mek });
+            sent = true;
         } catch (imgErr) {
-            console.log("Ping image failed, sending text:", imgErr.message);
-            // Fallback: simple text (same style) if catbox down
+            console.log("Ping image failed, falling back to text:", imgErr.message);
+        }
+
+        // Fallback: agar image send nahi hui to simple text (same style)
+        if (!sent) {
             await conn.sendMessage(from, {
                 text: msg,
                 contextInfo
