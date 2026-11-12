@@ -4,7 +4,7 @@ import { cmd, commands } from '../command.js';
 
 const __filename = fileURLToPath(import.meta.url);
 
-// --- PING COMMAND (SIMPLE STYLE LIKE MENU) ---
+// --- PING COMMAND (FIXED) ---
 cmd({
     pattern: "ping",
     alias: ["speed", "pong", "ping2"],
@@ -30,11 +30,9 @@ async (conn, mek, m, { from, quoted, sender, reply }) => {
         const reactionEmoji = reactionEmojis[Math.floor(Math.random() * reactionEmojis.length)];
 
         // Quick reaction
-        try {
-            await conn.sendMessage(from, {
-                react: { text: reactionEmoji, key: mek.key }
-            });
-        } catch (_) {}
+        await conn.sendMessage(from, {
+            react: { text: reactionEmoji, key: mek.key }
+        });
 
         const end = new Date().getTime();
         const responseTime = end - start;
@@ -50,6 +48,8 @@ ${BOT_NAME}
 
 ───────────────`;
 
+        const imageToUse = "https://files.catbox.moe/lojbeu.jpg";
+
         const contextInfo = {
             mentionedJid: [sender],
             forwardingScore: 999,
@@ -61,27 +61,16 @@ ${BOT_NAME}
             }
         };
 
-        // 1. Image ke saath send karne ki koshish
-        // 2. Agar catbox down / image fail ho to SIMPLE TEXT bhejo (fallback)
-        let sent = false;
-
+        // 1. Send with image (same like menu)
         try {
-            // Pehle image URL verify karo ke actually load ho rahi hai
-            const testRes = await fetch("https://files.catbox.moe/lojbeu.jpg", { method: 'HEAD' });
-            if (!testRes.ok) throw new Error(`Image not reachable (status ${testRes.status})`);
-
             await conn.sendMessage(from, {
-                image: { url: "https://files.catbox.moe/lojbeu.jpg" },
+                image: { url: imageToUse },
                 caption: msg,
                 contextInfo
             }, { quoted: mek });
-            sent = true;
         } catch (imgErr) {
-            console.log("Ping image failed, falling back to text:", imgErr.message);
-        }
-
-        // Fallback: agar image send nahi hui to simple text (same style)
-        if (!sent) {
+            // Agar image fail ho jaye (catbox down), to simple text bhej do
+            console.log("Ping image failed, sending text:", imgErr.message);
             await conn.sendMessage(from, {
                 text: msg,
                 contextInfo
@@ -90,6 +79,7 @@ ${BOT_NAME}
 
     } catch (e) {
         console.error("Error in ping command:", e);
+        // Agar upar koi error aaye to user ko batayen
         reply(`⚠️ Error: ${e.message}`);
     }
 });
