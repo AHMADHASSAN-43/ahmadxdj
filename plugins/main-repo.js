@@ -42,8 +42,17 @@ async (conn, mek, m, { from, reply, userConfig }) => {
 
 > *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʜᴍᴀᴅ ʜᴀssᴀɴ*`;
 
-        // Direct Catbox Image URL (Same as Help command structure)
-        const imageToSend = { url: "https://files.catbox.moe/2maqd9.jpg" };
+        // Pehle lib/menu.jpg (menu wali local pic), na mile to catbox wali pic
+        let imageToSend = { url: "https://files.catbox.moe/2maqd9.jpg" };
+        try {
+            const localMenu = path.join(__dirname, '../lib/menu.jpg');
+            if (fs.existsSync(localMenu)) {
+                const buf = fs.readFileSync(localMenu);
+                if (buf.length > 1000) imageToSend = buf;
+            }
+        } catch (e) {
+            console.log("Local menu pic read error:", e.message);
+        }
 
         await conn.sendMessage(from, {
             image: imageToSend,
