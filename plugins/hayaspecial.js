@@ -21,7 +21,7 @@ const songs = {
     7: "https://files.catbox.moe/96l81l.m4a",   // Haya Song 7
     8: "https://files.catbox.moe/8wcrm2.m4a",   // Haya Song 8
     9: "https://files.catbox.moe/g2wjid.mp3",   // Haya Song 9
-    10: "https://files.catbox.moe/17h3ci.mp3",  // Haya Song 10  <-- NEW
+    10: "https://files.catbox.moe/2i5kzw.mp3",  // Haya Song 10  <-- NEW
     // 11: "https://...",  // future songs yahan add karo
 };
 
