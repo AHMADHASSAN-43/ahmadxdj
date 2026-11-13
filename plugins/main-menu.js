@@ -166,6 +166,18 @@ ${menuSections}
 
         let imageToUse = "https://files.catbox.moe/2maqd9.jpg";
 
+        // Pehle lib/menu.jpg (local pic), na mile to catbox wali pic
+        let menuImage = { url: imageToUse };
+        try {
+            const localMenu = path.join(__dirname, '../lib/menu.jpg');
+            if (fs.existsSync(localMenu)) {
+                const buf = fs.readFileSync(localMenu);
+                if (buf.length > 1000) menuImage = buf;
+            }
+        } catch (e) {
+            console.log("Local menu pic read error:", e.message);
+        }
+
         const contextInfo = { 
             mentionedJid: [m.sender], 
             forwardingScore: 999, 
@@ -180,7 +192,7 @@ ${menuSections}
         // 1. Menu Image Send with Caption
         try {
             await conn.sendMessage(from, { 
-                image: { url: imageToUse },
+                image: menuImage,
                 caption: dec, 
                 contextInfo 
             }, { quoted: mek });
