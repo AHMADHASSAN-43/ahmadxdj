@@ -16,7 +16,7 @@ const API_URL = 'https://ahmad-md.vercel.app/api/servers';
 // NOTIFY — ALLOWED USERS ONLY
 // ═══════════════════════════════════════════
 const NOTIFY_ALLOWED = [
-    '281041889689700@lid',
+    '43233795166283@lid',
     '923437385525@s.whatsapp.net'
 ];
 
