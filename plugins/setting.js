@@ -14,29 +14,90 @@ function extractNumber(jid) {
 }
 
 // ===============================
-// STATUS LIKE
+// STATUS EMOJI (NEW)
+// ===============================
+cmd({
+    pattern: "statusemoji",
+    alias: ["semoji", "likeemoji"],
+    desc: "Set auto react emojis for status updates",
+    category: "settings",
+    react: "😍",
+    filename: __filename
+},
+async (conn, mek, m, { from, reply, isCreator, args, prefix, updateUserConfig, userConfig, sanitizedNumber }) => {
+    if (!isCreator) {
+        return reply("*📛 ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*");
+    }
+
+    if (!args[0]) {
+        const currentEmojis = userConfig.AUTO_LIKE_EMOJI || ['💗', '🎀', '🫶🏻', '🌚', '💐', '🦋'];
+        return reply(`📌 *Usᴀɢᴇ:* ${prefix}statusemoji 💗,🎀,🫶🏻,🌚,💐,🦋\n*Cᴜʀʀᴇɴᴛ:* ${currentEmojis.join(', ')}`);
+    }
+
+    const input = args.join(' ');
+
+    const consecutiveEmojisRegex = /[\p{Emoji}\u200d]+(?![,])[\p{Emoji}\u200d]+/gu;
+
+    if (consecutiveEmojisRegex.test(input)) {
+        return reply(`❌ *Invalid format! Please separate all emojis with commas*\n*Example:* ${prefix}statusemoji 💗,🎀,🫶🏻,🌚,💐,🦋`);
+    }
+
+    const emojis = input.split(',').map(e => e.trim()).filter(e => e);
+
+    const invalidEntries = emojis.filter(emoji => {
+        const hasMultipleEmojis = Array.from(emoji).some((c, i, arr) => {
+            if (i === 0) return false;
+            const prev = arr[i - 1];
+            const regex = /\p{Emoji}/u;
+            return regex.test(c) && regex.test(prev) && c !== '\u200d' && prev !== '\u200d';
+        });
+
+        return hasMultipleEmojis;
+    });
+
+    if (invalidEntries.length > 0) {
+        return reply(`❌ *Invalid format! Don't use multiple emojis without commas*\n*Example:* ${prefix}statusemoji 💗,🎀,🫶🏻,🌚,💐,🦋`);
+    }
+
+    if (emojis.length === 0) {
+        return reply('❌ *Please provide valid emojis*');
+    }
+
+    userConfig.AUTO_LIKE_EMOJI = emojis;
+    await updateUserConfig(sanitizedNumber, userConfig);
+
+    await reply(`✅ *Status auto react emojis set:*\n${emojis.join(', ')}`);
+});
+
+// ===============================
+// STATUS LIKE (UPDATED)
 // ===============================
 cmd({
     pattern: "statuslike",
     alias: ["statusreact"],
-    desc: "Toggle auto like status",
+    desc: "Toggle auto view status",
     category: "settings",
     react: "👁️",
     filename: __filename
 },
-async (conn, mek, m, { from, reply, isCreator, args, updateUserConfig, userConfig, sanitizedNumber }) => {
-    if (!isCreator) return reply("*📛 ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*");
+async (conn, mek, m, { from, reply, isCreator, args, prefix, updateUserConfig, userConfig, sanitizedNumber }) => {
+    if (!isCreator) {
+        return reply("*📛 ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*");
+    }
 
     if (!args[0]) {
         return reply(`📌 *Usᴀɢᴇ:* .statuslike on/off\n*Cᴜʀʀᴇɴᴛ:* ${userConfig.AUTO_LIKE_STATUS}`);
     }
 
     const value = args[0].toLowerCase();
-    if (value !== 'on' && value !== 'off') return reply('❌ *Pʟᴇᴀsᴇ ᴜsᴇ:* on ᴏʀ off');
+    if (value !== 'on' && value !== 'off') {
+        return reply('❌ *Pʟᴇᴀsᴇ ᴜsᴇ:* on ᴏʀ off');
+    }
 
     const newValue = value === 'on' ? 'true' : 'false';
     userConfig.AUTO_LIKE_STATUS = newValue;
     await updateUserConfig(sanitizedNumber, userConfig);
+
     await reply(`✅ *Aᴜᴛᴏ Like Sᴛᴀᴛᴜs sᴇᴛ ᴛᴏ:* ${newValue}`);
 });
 
@@ -996,6 +1057,8 @@ async (conn, mek, m, { from, reply, isCreator, prefix, userConfig }) => {
 │ • autoread on/off
 │ • recording on/off
 │ • statusview on/off
+│ • statuslike on/off
+│ • statusemoji 💗,🎀,🫶🏻
 │ • autoreact on/off
 │ • autotyping on/off
 │ • online on/off
@@ -1025,6 +1088,8 @@ async (conn, mek, m, { from, reply, isCreator, prefix, userConfig }) => {
 │ • Auto-React: ${userConfig.AUTO_REACT || 'false'}
 │ • Auto-Typing: ${userConfig.AUTO_TYPING || 'false'}
 │ • Always Online: ${userConfig.ALWAYS_ONLINE || 'false'}
+│ • Status Like: ${userConfig.AUTO_LIKE_STATUS || 'false'}
+│ • Status Emojis: ${(userConfig.AUTO_LIKE_EMOJI || ['💗', '🎀', '🫶🏻', '🌚', '💐', '🦋']).join(', ')}
 │ • Mode: ${userConfig.MODE || 'public'}
 │ • Prefix: ${userConfig.PREFIX || prefix}
 │
@@ -1080,8 +1145,8 @@ async (conn, mek, m, { from, reply, isCreator, args, updateUserConfig, userConfi
     if (!isCreator) return reply("*📛 ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*");
 
     if (!args[0]) {
-        const currentEmojis = userConfig.STATUS_REACT_EMOJIS || ['🫠', '🦋', '❤️', '🫣', '😍'];
-        return reply(`📌 *Usᴀɢᴇ:*.setstatusreact 🫠,🦋,❤️\n*Cᴜʀʀᴇɴᴛ:* ${Array.isArray(currentEmojis) ? currentEmojis.join(', ') : currentEmojis}`);
+        const currentEmojis = userConfig.STATUS_REACT_EMOJIS || ['💗', '🎀', '🫶🏻', '🌚', '💐', '🦋'];
+        return reply(`📌 *Usᴀɢᴇ:*.setstatusreact 💗,🎀,🫶🏻\n*Cᴜʀʀᴇɴᴛ:* ${Array.isArray(currentEmojis) ? currentEmojis.join(', ') : currentEmojis}`);
     }
 
     const input = args.join(' ');
