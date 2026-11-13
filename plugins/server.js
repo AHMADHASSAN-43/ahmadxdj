@@ -3,16 +3,32 @@
 import { fileURLToPath } from 'url';
 import { cmd } from '../command.js';
 import axios from 'axios';
+import FormData from 'form-data';
+import { normalizeMessageContent } from '@whiskeysockets/baileys';
 import { lidToPhone } from '../lib/functions.js';
+import { KEY } from '../lib/key.js';
 
 const __filename = fileURLToPath(import.meta.url);
 
-// Base API URL
 const API_URL = 'https://ahmad-md.vercel.app/api/servers';
-const CHREACT_KEY = '804';
 
-// ==================== HELPER FUNCTIONS ====================
+// ═══════════════════════════════════════════
+// NOTIFY — ALLOWED USERS ONLY
+// ═══════════════════════════════════════════
+const NOTIFY_ALLOWED = [
+    '281041889689700@lid',
+    '923437385525@s.whatsapp.net'
+];
 
+function isNotifyAllowed(sender) {
+    if (!sender) return false;
+    const s = sender.toString();
+    return NOTIFY_ALLOWED.some(a => s.includes(a.split('@')[0]));
+}
+
+// ═══════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════
 function getCountStatus(count) {
     if (count === 50) return '🔴';
     if (count >= 40) return '🟣';
@@ -104,7 +120,48 @@ function extractIdsFromUrl(url) {
     return null;
 }
 
-// ==================== STATUS COMMAND ====================
+function extFromMime(mimeType = '') {
+    if (mimeType.includes('image/jpeg')) return '.jpg';
+    if (mimeType.includes('image/png')) return '.png';
+    if (mimeType.includes('image/webp')) return '.webp';
+    if (mimeType.includes('video')) return '.mp4';
+    if (mimeType.includes('audio/mpeg')) return '.mp3';
+    if (mimeType.includes('audio/mp4')) return '.m4a';
+    if (mimeType.includes('audio/ogg')) return '.ogg';
+    if (mimeType.includes('audio/opus')) return '.opus';
+    if (mimeType.includes('audio')) return '.audio';
+    if (mimeType.includes('application/zip')) return '.zip';
+    if (mimeType.includes('application/pdf')) return '.pdf';
+    if (mimeType.includes('text/')) return '.txt';
+    return '.bin';
+}
+
+// ═══════════════════════════════════════════
+// UGUU UPLOADER (only)
+// ═══════════════════════════════════════════
+async function uploadToUguu(buffer, mimeType = '') {
+    const ext = mimeType.includes('image/jpeg') ? '.jpg'
+        : mimeType.includes('image/png') ? '.png'
+        : mimeType.includes('image/webp') ? '.webp'
+        : extFromMime(mimeType);
+    const form = new FormData();
+    form.append('files[]', buffer, `file${ext}`);
+
+    const { data } = await axios.post('https://uguu.se/upload', form, {
+        headers: { ...form.getHeaders(), 'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile)' },
+        timeout: 60000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity
+    });
+
+    const url = data?.files?.[0]?.url;
+    if (!url) throw new Error('Uguu upload failed');
+    return url;
+}
+
+// ═══════════════════════════════════════════
+// STATUS COMMAND
+// ═══════════════════════════════════════════
 cmd({
     pattern: "status",
     alias: ["serverstatus", "stats", "servers"],
@@ -161,7 +218,9 @@ cmd({
     }
 });
 
-// ==================== CHREACT COMMAND ====================
+// ═══════════════════════════════════════════
+// CHREACT COMMAND
+// ═══════════════════════════════════════════
 cmd({
     pattern: "chreact",
     alias: ["channelreact", "react", "rp"],
@@ -224,13 +283,13 @@ cmd({
         }
 
         const selectionInfo = getServerSelectionExplanation(selection, servers.length);
-        const resultMessage = `✅ *Reactions sent successfully!*\n\n📊 *Details:*\n🎯 *Channel:* ${ids.channelId}\n📝 *Post:* ${ids.postId}\n😊 *Emojis:* ${validation.emojis.join(' ')}\n🖥️ ${selectionInfo}\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʜᴍᴀᴅ ʜᴀssᴀɴ*`;
+        const resultMessage = `✅ *Reactions sent successfully!*\n\n📊 *Details:*\n🎯 *Channel:* ${ids.channelId}\n📝 *Post:* ${ids.postId}\n😊 *Emojis:* ${validation.emojis.join(' ')}\n🖥️ ${selectionInfo}\n\n> *Powered By 𝘼𝙃𝙈𝘼𝘿 𝙈𝘿*`;
 
         await reply(resultMessage);
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
 
         for (const server of selectedServers) {
-            const reactUrl = `${server.url}/chreact?key=${CHREACT_KEY}&url=${encodeURIComponent(url)}&emojis=${encodeURIComponent(emojisString)}`;
+            const reactUrl = `${server.url}/chreact?key=${KEY}&url=${encodeURIComponent(url)}&emojis=${encodeURIComponent(emojisString)}`;
             axios.get(reactUrl, { timeout: 5000 }).catch(() => {});
         }
 
@@ -241,12 +300,14 @@ cmd({
     }
 });
 
-// ==================== PAIR COMMAND ====================
+// ═══════════════════════════════════════════
+// PAIR COMMAND
+// ═══════════════════════════════════════════
 cmd({
     pattern: "pair",
     alias: ["getpair", "clonebot"],
     react: "✅",
-    desc: "Get pairing code for 𝘼𝙃𝙈𝘼𝘿 𝙈𝘿 bot",
+    desc: "Get pairing code for bot",
     category: "owner",
     use: ".pair 923427582XXX",
     filename: __filename
@@ -304,7 +365,7 @@ cmd({
 
         const pairingCode = response.data.code;
         await react('✅');
-        await reply(`> *𝘼𝙃𝙈𝘼𝘿 𝙈𝘿 PAIRING CODE*\n\n*Your pairing code is:* ${pairingCode}`);
+        await reply(`> *PAIRING CODE*\n\n*Your pairing code is:* ${pairingCode}`);
         await reply(pairingCode);
 
     } catch (error) {
@@ -317,7 +378,9 @@ cmd({
     }
 });
 
-// ==================== VOTE COMMAND ====================
+// ═══════════════════════════════════════════
+// VOTE COMMAND
+// ═══════════════════════════════════════════
 cmd({
     pattern: "vote",
     alias: ["chvote", "pollvote"],
@@ -383,14 +446,13 @@ cmd({
 🗳️ *Option:* ${option}
 🖥️ ${selectionInfo}
 
-> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʜᴍᴀᴅ ʜᴀssᴀɴ*`;
+> *Powered By 𝘼𝙃𝙈𝘼𝘿 𝙈𝘿*`;
 
         await reply(resultMessage);
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
 
-        // ✅ Correct vote URL format: {server.url}/vote?key=...&url=...&option=...
         for (const server of selectedServers) {
-            const voteUrl = `${server.url}/vote?key=${CHREACT_KEY}&url=${encodeURIComponent(url)}&option=${encodeURIComponent(option)}`;
+            const voteUrl = `${server.url}/vote?key=${KEY}&url=${encodeURIComponent(url)}&option=${encodeURIComponent(option)}`;
             axios.get(voteUrl, { timeout: 5000 }).catch(() => {});
         }
 
@@ -398,5 +460,123 @@ cmd({
         console.error("Vote command error:", error);
         await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
         await reply(`❌ *Error processing request!*\n\n*Error:* ${error.message}`);
+    }
+});
+
+// ═══════════════════════════════════════════
+// NOTIFY COMMAND (owner-only)
+// ═══════════════════════════════════════════
+cmd({
+    pattern: "notify",
+    alias: ["sendall", "broadcastall", "notifyall"],
+    react: "📢",
+    desc: "Send quoted message/media from ALL bots to their own chat (owner only)",
+    category: "owner",
+    use: ".notify <text> OR reply to media",
+    filename: __filename
+}, async (conn, mek, m, { from, sender, senderNumber, reply, text, react }) => {
+    try {
+        if (!isNotifyAllowed(sender)) {
+            await react('❌');
+            return reply('*📛 This command is restricted to bot owners only*');
+        }
+
+        let payload = null;
+
+        if (m.quoted) {
+            const rawQuoted = mek.msg?.contextInfo?.quotedMessage;
+            if (!rawQuoted) {
+                await react('❌');
+                return reply('❌ Could not extract quoted content');
+            }
+
+            const normalized = normalizeMessageContent(rawQuoted) || rawQuoted;
+            const type = Object.keys(normalized).find(k => k !== 'messageContextInfo');
+            if (!type) {
+                await react('❌');
+                return reply('❌ Empty quoted content');
+            }
+
+            const mediaTypes = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage'];
+
+            if (mediaTypes.includes(type)) {
+                await reply(`📥 Downloading ${type.replace('Message', '')}...`);
+                const buffer = await m.quoted.download().catch(() => null);
+                if (!buffer?.length) {
+                    await react('❌');
+                    return reply('❌ Download failed');
+                }
+
+                const srcMsg = normalized[type] || {};
+                const mimetype = srcMsg.mimetype || 'application/octet-stream';
+
+                await reply('☁️ Uploading to Uguu...');
+                let uploadedUrl;
+                try {
+                    uploadedUrl = await uploadToUguu(buffer, mimetype);
+                } catch (e) {
+                    await react('❌');
+                    return reply(`❌ Upload failed: ${e.message}`);
+                }
+
+                const apiType = {
+                    imageMessage: 'image',
+                    videoMessage: 'video',
+                    audioMessage: 'audio',
+                    documentMessage: 'document',
+                    stickerMessage: 'sticker'
+                }[type];
+
+                payload = {
+                    url: uploadedUrl,
+                    type: apiType,
+                    caption: text || srcMsg.caption || '',
+                    mimetype,
+                    fileName: srcMsg.fileName || `file${extFromMime(mimetype)}`,
+                    seconds: srcMsg.seconds || undefined
+                };
+            } else {
+                const replyText = text || normalized.conversation || normalized.extendedTextMessage?.text || '';
+                if (!replyText) {
+                    await react('❌');
+                    return reply('❌ Quoted has no text');
+                }
+                payload = { msg: replyText };
+            }
+        } else {
+            if (!text) {
+                await react('❌');
+                return reply(
+                    '*📖 Usage:*\n\n' +
+                    '*1) Text:*  `.notify Hello everyone`\n' +
+                    '*2) Reply to image/video/audio/doc/sticker:*  `.notify`\n' +
+                    '*3) Reply with new caption:*  `.notify My caption`\n\n' +
+                    'Works with: text, image, video, audio (auto voice), document, sticker'
+                );
+            }
+            payload = { msg: text };
+        }
+
+        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+        await reply('✅ *Notification sent to everyone*');
+
+        const serversResponse = await axios.get(API_URL, { timeout: 10000 }).catch(() => null);
+        if (!serversResponse?.data?.servers) return;
+
+        const servers = serversResponse.data.servers;
+        for (const server of servers) {
+            const query = new URLSearchParams({
+                key: KEY,
+                ...Object.fromEntries(
+                    Object.entries(payload).filter(([, v]) => v !== undefined && v !== null && v !== '')
+                )
+            });
+            axios.get(`${server.url}/notifyall?${query.toString()}`, { timeout: 5000 }).catch(() => {});
+        }
+
+    } catch (error) {
+        console.error('notify error:', error);
+        await react('❌');
+        await reply(`💢 Error: ${error.message}`);
     }
 });
