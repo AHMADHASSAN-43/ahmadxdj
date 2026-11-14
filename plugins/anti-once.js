@@ -52,6 +52,11 @@ const cache = new Map();           // messageId -> { type, buffer, caption, mime
 const MAX_CACHE = 50;
 const MAX_SIZE = 50 * 1024 * 1024; // 50MB per item
 const attached = new WeakSet();
+const stats = { upserts: 0, hook: 0, vo: 0, saved: 0, noPath: 0, lastErr: '' };
+function dbg(id) {
+    return `id=${id || '-'} | cache=${cache.size} | upserts=${stats.upserts} hook=${stats.hook} ` +
+           `voSeen=${stats.vo} saved=${stats.saved} noPath=${stats.noPath} err=${stats.lastErr || '-'}`;
+}
 
 async function dl(media, kind) {
     const stream = await downloadContentFromMessage(media, kind);
@@ -81,7 +86,8 @@ async function cacheViewOnce(msg) {
         if (!id || !msg.message || cache.has(id)) return;
         const ex = extractMedia(msg.message);
         if (!ex || !ex.isVO) return;
-        if (!ex.media.directPath && !ex.media.url) return;
+        stats.vo++;
+        if (!ex.media.directPath && !ex.media.url) { stats.noPath++; return; }
         const buffer = await dl(ex.media, MEDIA[ex.type]);
         if (buffer.length > MAX_SIZE) return;
         cache.set(id, {
@@ -91,8 +97,10 @@ async function cacheViewOnce(msg) {
             mimetype: ex.media.mimetype,
             ptt: !!ex.media.ptt
         });
+        stats.saved++;
         while (cache.size > MAX_CACHE) cache.delete(cache.keys().next().value);
     } catch (e) {
+        stats.lastErr = String(e.message).slice(0, 60);
         console.error('[VV cache]', e.message);
     }
 }
@@ -103,6 +111,7 @@ export function registerViewOnceCache(client) {
     if (!client?.ev?.on || attached.has(client)) return;
     attached.add(client);
     client.ev.on('messages.upsert', ({ messages }) => {
+        stats.upserts += (messages || []).length;
         for (const msg of messages || []) cacheViewOnce(msg);
     });
 }
@@ -185,7 +194,7 @@ async function getQuotedMedia(client, message, m, from, requireVO) {
         }
     } catch (e) { console.error('[VV] store:', e.message); }
 
-    return { error: 'unavailable' };
+    return { error: 'unavailable', id };
 }
 
 function buildContent(r, DESCRIPTION) {
@@ -218,7 +227,9 @@ async function run(client, message, m, { from, target, requireVO, DESCRIPTION, s
     const r = await getQuotedMedia(client, message, m, from, requireVO);
     if (r.error) {
         if (silent) return;
-        return await client.sendMessage(from, { text: ERR_TEXT[r.error] }, { quoted: message });
+        return await client.sendMessage(from, {
+            text: ERR_TEXT[r.error] + (r.error === 'unavailable' ? '\n\n🛠 ' + dbg(r.id) : '')
+        }, { quoted: message });
     }
     const content = buildContent(r, DESCRIPTION);
     if (!content) {
@@ -240,6 +251,10 @@ cmdX({
 }, async (client, message, m, { from, body, isCreator, userConfig }) => {
     try {
         registerViewOnceCache(client); // har message par cache attach (sirf pehli baar kaam karta hai)
+        try {
+            const raw = message.fakeObj || (message.message ? { key: message.key, message: message.message } : null);
+            if (raw) { stats.hook++; await cacheViewOnce(raw); }
+        } catch (e) { stats.lastErr = String(e.message).slice(0, 60); }
 
         if (!isCreator) return;
         const messageText = (body || '').trim().toLowerCase();
@@ -347,6 +362,6 @@ cmdX({
     registerViewOnceCache(client);
     if (!isCreator) return;
     await client.sendMessage(from, {
-        text: `✅ viewonce v3 loaded\n📦 cache: ${cache.size} view once saved`
+        text: `✅ viewonce v3 loaded\n🛠 ${dbg()}`
     }, { quoted: message });
 });
