@@ -52,10 +52,25 @@ const cache = new Map();           // messageId -> { type, buffer, caption, mime
 const MAX_CACHE = 50;
 const MAX_SIZE = 50 * 1024 * 1024; // 50MB per item
 const attached = new WeakSet();
-const stats = { upserts: 0, hook: 0, vo: 0, saved: 0, noPath: 0, lastErr: '' };
+const stats = { upserts: 0, hook: 0, vo: 0, saved: 0, noPath: 0, voRaw: 0, tree: '', lastErr: '' };
+
+// debug helpers: message ke andar viewonce key dhundho / structure (sirf key names) dikhao
+function hasKey(o, re, d = 5) {
+    if (!o || typeof o !== 'object' || ArrayBuffer.isView(o) || d < 0) return false;
+    for (const k of Object.keys(o)) if (re.test(k) || hasKey(o[k], re, d - 1)) return true;
+    return false;
+}
+function keyTree(o, d = 3) {
+    if (!o || typeof o !== 'object' || ArrayBuffer.isView(o) || d < 0) return '';
+    return Object.keys(o).map(k => {
+        const sub = keyTree(o[k], d - 1);
+        return sub ? `${k}{${sub}}` : k;
+    }).join(',');
+}
 function dbg(id) {
     return `id=${id || '-'} | cache=${cache.size} | upserts=${stats.upserts} hook=${stats.hook} ` +
-           `voSeen=${stats.vo} saved=${stats.saved} noPath=${stats.noPath} err=${stats.lastErr || '-'}`;
+           `voSeen=${stats.vo} saved=${stats.saved} noPath=${stats.noPath} raw=${stats.voRaw} err=${stats.lastErr || '-'}` +
+           `\ntree=${stats.tree || '-'}`;
 }
 
 async function dl(media, kind) {
@@ -84,6 +99,10 @@ async function cacheViewOnce(msg) {
     try {
         const id = msg?.key?.id;
         if (!id || !msg.message || cache.has(id)) return;
+        if (hasKey(msg.message, /viewonce/i)) {
+            stats.voRaw++;
+            stats.tree = keyTree(msg.message).slice(0, 160);
+        }
         const ex = extractMedia(msg.message);
         if (!ex || !ex.isVO) return;
         stats.vo++;
