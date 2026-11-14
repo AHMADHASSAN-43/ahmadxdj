@@ -303,9 +303,9 @@ cmdX({
             from, target: from, requireVO: false, DESCRIPTION: getDesc(userConfig)
         });
     } catch (error) {
-        console.error("vv Error:", error);
+        console.error("[VV v3] vv error STACK:", error.stack || error);
         await client.sendMessage(from, {
-            text: "❌ Error fetching vv message:\n" + error.message
+            text: "❌ [v3] Error fetching vv message:\n" + error.message
         }, { quoted: message });
     }
 });
@@ -327,9 +327,9 @@ cmdX({
             from, target: message.sender, requireVO: false, DESCRIPTION: getDesc(userConfig)
         });
     } catch (error) {
-        console.error("vv2 Error:", error);
+        console.error("[VV v3] vv2 error STACK:", error.stack || error);
         await client.sendMessage(from, {
-            text: "❌ Error fetching vv message:\n" + error.message
+            text: "❌ [v3] Error fetching vv message:\n" + error.message
         }, { quoted: message });
     }
 });
