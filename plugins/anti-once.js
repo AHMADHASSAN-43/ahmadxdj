@@ -52,26 +52,6 @@ const cache = new Map();           // messageId -> { type, buffer, caption, mime
 const MAX_CACHE = 50;
 const MAX_SIZE = 50 * 1024 * 1024; // 50MB per item
 const attached = new WeakSet();
-const stats = { upserts: 0, hook: 0, vo: 0, saved: 0, noPath: 0, voRaw: 0, tree: '', lastErr: '' };
-
-// debug helpers: message ke andar viewonce key dhundho / structure (sirf key names) dikhao
-function hasKey(o, re, d = 5) {
-    if (!o || typeof o !== 'object' || ArrayBuffer.isView(o) || d < 0) return false;
-    for (const k of Object.keys(o)) if (re.test(k) || hasKey(o[k], re, d - 1)) return true;
-    return false;
-}
-function keyTree(o, d = 3) {
-    if (!o || typeof o !== 'object' || ArrayBuffer.isView(o) || d < 0) return '';
-    return Object.keys(o).map(k => {
-        const sub = keyTree(o[k], d - 1);
-        return sub ? `${k}{${sub}}` : k;
-    }).join(',');
-}
-function dbg(id) {
-    return `id=${id || '-'} | cache=${cache.size} | upserts=${stats.upserts} hook=${stats.hook} ` +
-           `voSeen=${stats.vo} saved=${stats.saved} noPath=${stats.noPath} raw=${stats.voRaw} err=${stats.lastErr || '-'}` +
-           `\ntree=${stats.tree || '-'}`;
-}
 
 async function dl(media, kind) {
     const stream = await downloadContentFromMessage(media, kind);
@@ -99,14 +79,9 @@ async function cacheViewOnce(msg) {
     try {
         const id = msg?.key?.id;
         if (!id || !msg.message || cache.has(id)) return;
-        if (hasKey(msg.message, /viewonce/i)) {
-            stats.voRaw++;
-            stats.tree = keyTree(msg.message).slice(0, 160);
-        }
         const ex = extractMedia(msg.message);
         if (!ex || !ex.isVO) return;
-        stats.vo++;
-        if (!ex.media.directPath && !ex.media.url) { stats.noPath++; return; }
+        if (!ex.media.directPath && !ex.media.url) return;
         const buffer = await dl(ex.media, MEDIA[ex.type]);
         if (buffer.length > MAX_SIZE) return;
         cache.set(id, {
@@ -116,10 +91,8 @@ async function cacheViewOnce(msg) {
             mimetype: ex.media.mimetype,
             ptt: !!ex.media.ptt
         });
-        stats.saved++;
         while (cache.size > MAX_CACHE) cache.delete(cache.keys().next().value);
     } catch (e) {
-        stats.lastErr = String(e.message).slice(0, 60);
         console.error('[VV cache]', e.message);
     }
 }
@@ -130,7 +103,6 @@ export function registerViewOnceCache(client) {
     if (!client?.ev?.on || attached.has(client)) return;
     attached.add(client);
     client.ev.on('messages.upsert', ({ messages }) => {
-        stats.upserts += (messages || []).length;
         for (const msg of messages || []) cacheViewOnce(msg);
     });
 }
@@ -213,7 +185,7 @@ async function getQuotedMedia(client, message, m, from, requireVO) {
         }
     } catch (e) { console.error('[VV] store:', e.message); }
 
-    return { error: 'unavailable', id };
+    return { error: 'unavailable' };
 }
 
 function buildContent(r, DESCRIPTION) {
@@ -246,9 +218,7 @@ async function run(client, message, m, { from, target, requireVO, DESCRIPTION, s
     const r = await getQuotedMedia(client, message, m, from, requireVO);
     if (r.error) {
         if (silent) return;
-        return await client.sendMessage(from, {
-            text: ERR_TEXT[r.error] + (r.error === 'unavailable' ? '\n\n🛠 ' + dbg(r.id) : '')
-        }, { quoted: message });
+        return await client.sendMessage(from, { text: ERR_TEXT[r.error] }, { quoted: message });
     }
     const content = buildContent(r, DESCRIPTION);
     if (!content) {
@@ -270,10 +240,6 @@ cmdX({
 }, async (client, message, m, { from, body, isCreator, userConfig }) => {
     try {
         registerViewOnceCache(client); // har message par cache attach (sirf pehli baar kaam karta hai)
-        try {
-            const raw = message.fakeObj || (message.message ? { key: message.key, message: message.message } : null);
-            if (raw) { stats.hook++; await cacheViewOnce(raw); }
-        } catch (e) { stats.lastErr = String(e.message).slice(0, 60); }
 
         if (!isCreator) return;
         const messageText = (body || '').trim().toLowerCase();
@@ -337,9 +303,9 @@ cmdX({
             from, target: from, requireVO: false, DESCRIPTION: getDesc(userConfig)
         });
     } catch (error) {
-        console.error("[VV v3] vv error STACK:", error.stack || error);
+        console.error("vv Error:", error);
         await client.sendMessage(from, {
-            text: "❌ [v3] Error fetching vv message:\n" + error.message
+            text: "❌ Error fetching vv message:\n" + error.message
         }, { quoted: message });
     }
 });
@@ -361,9 +327,9 @@ cmdX({
             from, target: message.sender, requireVO: false, DESCRIPTION: getDesc(userConfig)
         });
     } catch (error) {
-        console.error("[VV v3] vv2 error STACK:", error.stack || error);
+        console.error("vv2 Error:", error);
         await client.sendMessage(from, {
-            text: "❌ [v3] Error fetching vv message:\n" + error.message
+            text: "❌ Error fetching vv message:\n" + error.message
         }, { quoted: message });
     }
 });
@@ -381,6 +347,6 @@ cmdX({
     registerViewOnceCache(client);
     if (!isCreator) return;
     await client.sendMessage(from, {
-        text: `✅ viewonce v3 loaded\n🛠 ${dbg()}`
+        text: `✅ viewonce v3 loaded\n📦 cache: ${cache.size} view once saved`
     }, { quoted: message });
 });
