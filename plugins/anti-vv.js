@@ -1,159 +1,264 @@
-// plugins/viewonce.js - ESM Version
+// plugins/viewonce.js - ESM Version (Official Baileys compatible, fixed)
 import { fileURLToPath } from 'url';
 import { cmd } from '../command.js';
 import config from '../config.js';
+import {
+    downloadContentFromMessage,
+    normalizeMessageContent
+} from '@whiskeysockets/baileys';
 
 const __filename = fileURLToPath(import.meta.url);
 
-// Define the exact keywords to check for (only these three)
+// Keywords (only these exact words trigger the auto-retrieve)
 const positiveKeywords = ["nice", "good", "cute", "🌝", "🥵", "💋", "👍", "🌚", "wow", "😩", "super"];
 
-// No prefix keyword handler for view once messages (owner only)
+const MEDIA = {
+    imageMessage: 'image',
+    videoMessage: 'video',
+    audioMessage: 'audio'
+};
+const VO_KEYS = ['viewOnceMessage', 'viewOnceMessageV2', 'viewOnceMessageV2Extension'];
+
+// =====================================================================
+//  VIEW-ONCE CACHE
+//  WhatsApp reply (quoted) mein view-once ka media URL/directPath hata deta hai.
+//  Isliye "No valid media URL or directPath" error aata tha.
+//  Fix: view-once message jab bot ko milta hai usi waqt download karke cache kar lo.
+// =====================================================================
+const cache = new Map();           // messageId -> { type, buffer, caption, mimetype, ptt }
+const MAX_CACHE = 50;
+const MAX_SIZE = 50 * 1024 * 1024; // 50MB per item
+const attached = new WeakSet();
+
+async function dl(media, kind) {
+    const stream = await downloadContentFromMessage(media, kind);
+    const chunks = [];
+    for await (const c of stream) chunks.push(c);
+    const buf = Buffer.concat(chunks);
+    if (!buf.length) throw new Error('Empty media');
+    return buf;
+}
+
+// Message se media nikalo (view once wrapper ya viewOnce flag dono handle)
+function extractMedia(message) {
+    if (!message) return null;
+    const wrapped =
+        VO_KEYS.some(k => message[k]) ||
+        VO_KEYS.some(k => message.ephemeralMessage?.message?.[k]);
+    const content = normalizeMessageContent(message) || message;
+    const type = Object.keys(content).find(k => MEDIA[k]);
+    if (!type) return null;
+    const media = content[type];
+    return { type, media, isVO: wrapped || !!media.viewOnce };
+}
+
+async function cacheViewOnce(msg) {
+    try {
+        const id = msg?.key?.id;
+        if (!id || !msg.message || cache.has(id)) return;
+        const ex = extractMedia(msg.message);
+        if (!ex || !ex.isVO) return;
+        if (!ex.media.directPath && !ex.media.url) return;
+        const buffer = await dl(ex.media, MEDIA[ex.type]);
+        if (buffer.length > MAX_SIZE) return;
+        cache.set(id, {
+            type: ex.type,
+            buffer,
+            caption: ex.media.caption || '',
+            mimetype: ex.media.mimetype,
+            ptt: !!ex.media.ptt
+        });
+        while (cache.size > MAX_CACHE) cache.delete(cache.keys().next().value);
+    } catch (e) {
+        console.error('[VV cache]', e.message);
+    }
+}
+
+// Best: ise main connection file mein socket banate hi ek baar call kar do.
+// Nahi kiya to bhi ye plugin pehle message par khud attach kar leta hai.
+export function registerViewOnceCache(client) {
+    if (!client?.ev?.on || attached.has(client)) return;
+    attached.add(client);
+    client.ev.on('messages.upsert', ({ messages }) => {
+        for (const msg of messages || []) cacheViewOnce(msg);
+    });
+}
+
+// =====================================================================
+//  FETCH QUOTED VIEW-ONCE (multi-method)
+// =====================================================================
+function getQuotedInfo(message, m) {
+    const q = m?.quoted || message?.quoted || null;
+    let ctx = null;
+    const raw = message?.message && (normalizeMessageContent(message.message) || message.message);
+    if (raw) {
+        const t = Object.keys(raw).find(k => k !== 'messageContextInfo');
+        ctx = raw[t]?.contextInfo || null;
+    }
+    if (!ctx) ctx = message?.msg?.contextInfo || null;
+    return {
+        q,
+        id: ctx?.stanzaId || q?.id || q?.key?.id || null,
+        quotedMessage: ctx?.quotedMessage || q?.message || null
+    };
+}
+
+async function getQuotedMedia(client, message, m, from, requireVO) {
+    const { q, id, quotedMessage } = getQuotedInfo(message, m);
+    if (!q && !quotedMessage) return { error: 'noquote' };
+
+    // 1) Cache (sabse reliable)
+    if (id && cache.has(id)) return cache.get(id);
+
+    // 2) Quoted message se direct download
+    const ex = extractMedia(quotedMessage);
+    const isVO = !!(ex?.isVO || q?.viewOnce);
+    if (requireVO && !isVO) return { error: 'notvo' };
+
+    if (ex && (ex.media.directPath || ex.media.url)) {
+        try {
+            const buffer = await dl(ex.media, MEDIA[ex.type]);
+            return {
+                type: ex.type, buffer,
+                caption: ex.media.caption || '',
+                mimetype: ex.media.mimetype,
+                ptt: !!ex.media.ptt
+            };
+        } catch (e) { console.error('[VV] quoted download:', e.message); }
+    }
+
+    // 3) Serializer ka download()
+    try {
+        if (typeof q?.download === 'function') {
+            const buffer = await q.download();
+            if (Buffer.isBuffer(buffer) && buffer.length && MEDIA[q.mtype]) {
+                return {
+                    type: q.mtype, buffer,
+                    caption: q.text || '',
+                    mimetype: q.mimetype,
+                    ptt: !!q.ptt
+                };
+            }
+        }
+    } catch (e) { console.error('[VV] serializer download:', e.message); }
+
+    // 4) Store se original message
+    try {
+        const chat = message?.key?.remoteJid || from;
+        const stored = id
+            ? (await client.store?.loadMessage?.(chat, id)) || (await client.loadMessage?.(chat, id))
+            : null;
+        const sx = extractMedia(stored?.message);
+        if (sx) {
+            const buffer = await dl(sx.media, MEDIA[sx.type]);
+            return {
+                type: sx.type, buffer,
+                caption: sx.media.caption || '',
+                mimetype: sx.media.mimetype,
+                ptt: !!sx.media.ptt
+            };
+        }
+    } catch (e) { console.error('[VV] store:', e.message); }
+
+    return { error: 'unavailable' };
+}
+
+function buildContent(r, DESCRIPTION) {
+    const cap = r.caption
+        ? (DESCRIPTION ? `${r.caption}\n\n> ${DESCRIPTION}` : r.caption)
+        : (DESCRIPTION ? `> ${DESCRIPTION}` : '');
+    switch (r.type) {
+        case 'imageMessage':
+            return { image: r.buffer, caption: cap, mimetype: r.mimetype || 'image/jpeg' };
+        case 'videoMessage':
+            return { video: r.buffer, caption: cap, mimetype: r.mimetype || 'video/mp4' };
+        case 'audioMessage':
+            return { audio: r.buffer, mimetype: r.mimetype || 'audio/mp4', ptt: !!r.ptt };
+        default:
+            return null;
+    }
+}
+
+const ERR_TEXT = {
+    noquote: "*🍁 Please reply to a view once message!*",
+    notvo: "*❌ Please reply to a view once message!*",
+    unavailable:
+        "❌ Media nahi mil saka.\n" +
+        "Ye view once bot ke online hote huye receive nahi hua (ya WhatsApp se hat chuka hai). " +
+        "Naye view once par ye kaam karega."
+};
+
+// Common runner
+async function run(client, message, m, { from, target, requireVO, DESCRIPTION, silent }) {
+    const r = await getQuotedMedia(client, message, m, from, requireVO);
+    if (r.error) {
+        if (silent) return;
+        return await client.sendMessage(from, { text: ERR_TEXT[r.error] }, { quoted: message });
+    }
+    const content = buildContent(r, DESCRIPTION);
+    if (!content) {
+        if (silent) return;
+        return await client.sendMessage(from, {
+            text: "❌ Only image, video, and audio messages are supported"
+        }, { quoted: message });
+    }
+    await client.sendMessage(target, content, { quoted: message });
+}
+
+const getDesc = (userConfig) => userConfig?.DESCRIPTION || config.DESCRIPTION || "";
+
+// =====================================================================
+//  KEYWORD HANDLER (owner only, no prefix)
+// =====================================================================
 cmd({
     'on': "body"
-}, async (client, message, m, {
-    from,
-    body,
-    isCreator,
-    reply,
-    sender,
-    userConfig  // Added userConfig parameter
-}) => {
+}, async (client, message, m, { from, body, isCreator, userConfig }) => {
     try {
-        // Only allow the bot owner/creator
-        if (!isCreator) {
-            return; // Simply return without any response if not owner
-        }
+        registerViewOnceCache(client); // har message par cache attach (sirf pehli baar kaam karta hai)
 
-        // Get DESCRIPTION from userConfig if available, otherwise use config.DESCRIPTION
-        const DESCRIPTION = userConfig?.DESCRIPTION || config.DESCRIPTION || "";
+        if (!isCreator) return;
+        const messageText = (body || '').trim().toLowerCase();
+        if (!positiveKeywords.includes(messageText)) return;
 
-        const messageText = body.trim().toLowerCase();
-        
-        // Check if the message contains EXACTLY one of the keywords ONLY
-        // No other words, just the keyword alone
-        const hasExactKeywordOnly = positiveKeywords.includes(messageText);
-        
-        // Only process if contains exact keyword ONLY AND replying to a view once message
-        if (hasExactKeywordOnly && message.quoted?.viewOnce) {
-            const buffer = await message.quoted.download();
-            const mtype = message.quoted.mtype;
-            const originalCaption = message.quoted.text || '';
-            const options = { quoted: message };
-
-            let messageContent = {};
-            switch (mtype) {
-                case "imageMessage":
-                    messageContent = {
-                        image: buffer,
-                        caption: originalCaption ? `${originalCaption}\n\n> ${DESCRIPTION}` : `> ${DESCRIPTION}`,
-                        mimetype: message.quoted.mimetype || "image/jpeg"
-                    };
-                    break;
-                case "videoMessage":
-                    messageContent = {
-                        video: buffer,
-                        caption: originalCaption ? `${originalCaption}\n\n> ${DESCRIPTION}` : `> ${DESCRIPTION}`,
-                        mimetype: message.quoted.mimetype || "video/mp4"
-                    };
-                    break;
-                case "audioMessage":
-                    messageContent = {
-                        audio: buffer,
-                        mimetype: "audio/mp4",
-                        ptt: message.quoted.ptt || false
-                    };
-                    break;
-                default:
-                    return; // Silently ignore unsupported types
-            }
-
-            // Send the view once content to the user's DM
-            await client.sendMessage(message.sender, messageContent, options);
-        }
+        await run(client, message, m, {
+            from,
+            target: message.sender,
+            requireVO: true,
+            DESCRIPTION: getDesc(userConfig),
+            silent: true
+        });
     } catch (error) {
         console.error("View Once Keyword Error:", error);
     }
 });
 
-// Command handler for manual retrieval of view once messages (owner only)
+// =====================================================================
+//  .vv3  (owner only, sirf view once, same chat)
+// =====================================================================
 cmd({
     pattern: "vv3",
     react: '🐳',
     desc: "Retrieve view once messages (Owner Only)",
     category: "owner",
     filename: __filename
-}, async (client, message, m, {
-    from,
-    isCreator,
-    userConfig  // Added userConfig parameter
-}) => {
+}, async (client, message, m, { from, isCreator, userConfig }) => {
     try {
-        // Only allow the bot owner/creator
-        if (!isCreator) {
-            return; // Simply return without any response if not owner
-        }
-
-        // Get DESCRIPTION from userConfig if available, otherwise use config.DESCRIPTION
-        const DESCRIPTION = userConfig?.DESCRIPTION || config.DESCRIPTION || "";
-
-        if (!m.quoted) {
-            return await client.sendMessage(from, {
-                text: "*🍁 Please reply to a view once message!*"
-            }, { quoted: message });
-        }
-
-        // Check if it's a view once message
-        if (!m.quoted.viewOnce) {
-            return await client.sendMessage(from, {
-                text: "*❌ Please reply to a view once message!*"
-            }, { quoted: message });
-        }
-
-        const buffer = await m.quoted.download();
-        const mtype = m.quoted.mtype;
-        const originalCaption = m.quoted.text || '';
-        const options = { quoted: message };
-
-        let messageContent = {};
-        switch (mtype) {
-            case "imageMessage":
-                messageContent = {
-                    image: buffer,
-                    caption: originalCaption ? `${originalCaption}\n\n> ${DESCRIPTION}` : `> ${DESCRIPTION}`,
-                    mimetype: m.quoted.mimetype || "image/jpeg"
-                };
-                break;
-            case "videoMessage":
-                messageContent = {
-                    video: buffer,
-                    caption: originalCaption ? `${originalCaption}\n\n> ${DESCRIPTION}` : `> ${DESCRIPTION}`,
-                    mimetype: m.quoted.mimetype || "video/mp4"
-                };
-                break;
-            case "audioMessage":
-                messageContent = {
-                    audio: buffer,
-                    mimetype: "audio/mp4",
-                    ptt: m.quoted.ptt || false
-                };
-                break;
-            default:
-                return await client.sendMessage(from, {
-                    text: "❌ Only image, video, and audio view once messages are supported"
-                }, { quoted: message });
-        }
-
-        await client.sendMessage(from, messageContent, options);
+        registerViewOnceCache(client);
+        if (!isCreator) return;
+        await run(client, message, m, {
+            from, target: from, requireVO: true, DESCRIPTION: getDesc(userConfig)
+        });
     } catch (error) {
-        console.error("vv Error:", error);
+        console.error("vv3 Error:", error);
         await client.sendMessage(from, {
             text: "❌ Error retrieving view once message:\n" + error.message
         }, { quoted: message });
     }
 });
 
-// ==================== VV COMMAND ====================
+// =====================================================================
+//  .vv  (owner only, same chat)
+// =====================================================================
 cmd({
     pattern: "vv",
     alias: ["viewonce", 'retrive'],
@@ -161,62 +266,17 @@ cmd({
     desc: "Owner Only - retrieve quoted message back to user",
     category: "owner",
     filename: __filename
-}, async (client, message, m, { 
-    from, 
-    isCreator,
-    userConfig  // Added userConfig parameter
-}) => {
+}, async (client, message, m, { from, isCreator, userConfig }) => {
     try {
+        registerViewOnceCache(client);
         if (!isCreator) {
             return await client.sendMessage(from, {
                 text: "*📛 This is an owner command.*"
             }, { quoted: message });
         }
-
-        // Get DESCRIPTION from userConfig if available, otherwise use config.DESCRIPTION
-        const DESCRIPTION = userConfig?.DESCRIPTION || config.DESCRIPTION || "";
-
-        if (!m.quoted) {
-            return await client.sendMessage(from, {
-                text: "*🍁 Please reply to a view once message!*"
-            }, { quoted: message });
-        }
-
-        const buffer = await m.quoted.download();
-        const mtype = m.quoted.mtype;
-        const originalCaption = m.quoted.text || '';
-        const options = { quoted: message };
-
-        let messageContent = {};
-        switch (mtype) {
-            case "imageMessage":
-                messageContent = {
-                    image: buffer,
-                    caption: originalCaption ? `${originalCaption}\n\n> ${DESCRIPTION}` : `> ${DESCRIPTION}`,
-                    mimetype: m.quoted.mimetype || "image/jpeg"
-                };
-                break;
-            case "videoMessage":
-                messageContent = {
-                    video: buffer,
-                    caption: originalCaption ? `${originalCaption}\n\n> ${DESCRIPTION}` : `> ${DESCRIPTION}`,
-                    mimetype: m.quoted.mimetype || "video/mp4"
-                };
-                break;
-            case "audioMessage":
-                messageContent = {
-                    audio: buffer,
-                    mimetype: "audio/mp4",
-                    ptt: m.quoted.ptt || false
-                };
-                break;
-            default:
-                return await client.sendMessage(from, {
-                    text: "❌ Only image, video, and audio messages are supported"
-                }, { quoted: message });
-        }
-
-        await client.sendMessage(from, messageContent, options);
+        await run(client, message, m, {
+            from, target: from, requireVO: false, DESCRIPTION: getDesc(userConfig)
+        });
     } catch (error) {
         console.error("vv Error:", error);
         await client.sendMessage(from, {
@@ -225,72 +285,27 @@ cmd({
     }
 });
 
-// ==================== VV2 COMMAND ====================
+// =====================================================================
+//  .vv2  (owner only, DM mein bhejta hai)
+// =====================================================================
 cmd({
     pattern: "vv2",
     alias: ["wah", "ohh", "oho", "🙂", "😂", "❤️", "💋", "🥵", "🌚", "😒", "nice", "ok"],
     desc: "Owner Only - retrieve quoted message back to user",
     category: "owner",
     filename: __filename
-}, async (client, message, m, { 
-    from, 
-    isCreator,
-    userConfig  // Added userConfig parameter
-}) => {
+}, async (client, message, m, { from, isCreator, userConfig }) => {
     try {
-        if (!isCreator) {
-            return; // Simply return without any response if not owner
-        }
-
-        // Get DESCRIPTION from userConfig if available, otherwise use config.DESCRIPTION
-        const DESCRIPTION = userConfig?.DESCRIPTION || config.DESCRIPTION || "";
-
-        if (!m.quoted) {
-            return await client.sendMessage(from, {
-                text: "*🍁 Please reply to a view once message!*"
-            }, { quoted: message });
-        }
-
-        const buffer = await m.quoted.download();
-        const mtype = m.quoted.mtype;
-        const originalCaption = m.quoted.text || '';
-        const options = { quoted: message };
-
-        let messageContent = {};
-        switch (mtype) {
-            case "imageMessage":
-                messageContent = {
-                    image: buffer,
-                    caption: originalCaption ? `${originalCaption}\n\n> ${DESCRIPTION}` : `> ${DESCRIPTION}`,
-                    mimetype: m.quoted.mimetype || "image/jpeg"
-                };
-                break;
-            case "videoMessage":
-                messageContent = {
-                    video: buffer,
-                    caption: originalCaption ? `${originalCaption}\n\n> ${DESCRIPTION}` : `> ${DESCRIPTION}`,
-                    mimetype: m.quoted.mimetype || "video/mp4"
-                };
-                break;
-            case "audioMessage":
-                messageContent = {
-                    audio: buffer,
-                    mimetype: "audio/mp4",
-                    ptt: m.quoted.ptt || false
-                };
-                break;
-            default:
-                return await client.sendMessage(from, {
-                    text: "❌ Only image, video, and audio messages are supported"
-                }, { quoted: message });
-        }
-
-        // Forward to user's DM
-        await client.sendMessage(message.sender, messageContent, options);
+        registerViewOnceCache(client);
+        if (!isCreator) return;
+        await run(client, message, m, {
+            from, target: message.sender, requireVO: false, DESCRIPTION: getDesc(userConfig)
+        });
     } catch (error) {
-        console.error("vv Error:", error);
+        console.error("vv2 Error:", error);
         await client.sendMessage(from, {
             text: "❌ Error fetching vv message:\n" + error.message
         }, { quoted: message });
     }
 });
+            
