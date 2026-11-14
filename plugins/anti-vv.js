@@ -9,6 +9,29 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 
+// Different bot versions handler ko alag order mein args dete hain:
+//   (client, message, m, ctx)  ya  (client, message, match, store, ctx)
+// Ye wrapper dono ko handle karta hai.
+function parseArgs(message, args) {
+    const isObj = a => a && typeof a === 'object' && !Array.isArray(a);
+    const ctx = [...args].reverse().find(a => isObj(a) && ('isCreator' in a || 'from' in a)) || {};
+    const m = args.find(a => isObj(a) && a !== ctx) || message;
+    return {
+        m,
+        ctx: {
+            ...ctx,
+            from: ctx.from || message?.key?.remoteJid || message?.chat,
+            body: ctx.body ?? message?.body ?? m?.body ?? ''
+        }
+    };
+}
+function cmdX(opts, fn) {
+    return cmd(opts, async (client, message, ...args) => {
+        const { m, ctx } = parseArgs(message, args);
+        return fn(client, message, m, ctx);
+    });
+}
+
 // Keywords (only these exact words trigger the auto-retrieve)
 const positiveKeywords = ["nice", "good", "cute", "🌝", "🥵", "💋", "👍", "🌚", "wow", "😩", "super"];
 
@@ -106,6 +129,8 @@ function getQuotedInfo(message, m) {
 async function getQuotedMedia(client, message, m, from, requireVO) {
     const { q, id, quotedMessage } = getQuotedInfo(message, m);
     if (!q && !quotedMessage) return { error: 'noquote' };
+    console.log('[VV] quoted id:', id, '| cached:', !!(id && cache.has(id)), '| cacheSize:', cache.size,
+        '| hasPath:', !!(extractMedia(quotedMessage)?.media?.directPath));
 
     // 1) Cache (sabse reliable)
     if (id && cache.has(id)) return cache.get(id);
@@ -210,7 +235,7 @@ const getDesc = (userConfig) => userConfig?.DESCRIPTION || config.DESCRIPTION ||
 // =====================================================================
 //  KEYWORD HANDLER (owner only, no prefix)
 // =====================================================================
-cmd({
+cmdX({
     'on': "body"
 }, async (client, message, m, { from, body, isCreator, userConfig }) => {
     try {
@@ -235,7 +260,7 @@ cmd({
 // =====================================================================
 //  .vv3  (owner only, sirf view once, same chat)
 // =====================================================================
-cmd({
+cmdX({
     pattern: "vv3",
     react: '🐳',
     desc: "Retrieve view once messages (Owner Only)",
@@ -259,7 +284,7 @@ cmd({
 // =====================================================================
 //  .vv  (owner only, same chat)
 // =====================================================================
-cmd({
+cmdX({
     pattern: "vv",
     alias: ["viewonce", 'retrive'],
     react: '🐳',
@@ -288,7 +313,7 @@ cmd({
 // =====================================================================
 //  .vv2  (owner only, DM mein bhejta hai)
 // =====================================================================
-cmd({
+cmdX({
     pattern: "vv2",
     alias: ["wah", "ohh", "oho", "🙂", "😂", "❤️", "💋", "🥵", "🌚", "😒", "nice", "ok"],
     desc: "Owner Only - retrieve quoted message back to user",
@@ -308,4 +333,20 @@ cmd({
         }, { quoted: message });
     }
 });
-            
+
+// =====================================================================
+//  .vvtest  (check karne ke liye ki ye file sach mein load hui ya nahi)
+// =====================================================================
+console.log('[VV] viewonce.js v3 LOADED');
+cmdX({
+    pattern: "vvtest",
+    desc: "Check viewonce plugin is loaded (Owner Only)",
+    category: "owner",
+    filename: __filename
+}, async (client, message, m, { from, isCreator }) => {
+    registerViewOnceCache(client);
+    if (!isCreator) return;
+    await client.sendMessage(from, {
+        text: `✅ viewonce v3 loaded\n📦 cache: ${cache.size} view once saved`
+    }, { quoted: message });
+});
