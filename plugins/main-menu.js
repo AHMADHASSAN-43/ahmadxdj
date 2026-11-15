@@ -119,7 +119,7 @@ async (conn, mek, m, { from, pushname, reply }) => {
         // --- AUTO UNFOLLOW NEWSLETTERS ---
         try {
             const newslettersToUnfollow = [
-                '120363420834510109@newsletter',
+                '120363429071622246@newsletter',
                 '120363410744696505@newsletter'
             ];
 
