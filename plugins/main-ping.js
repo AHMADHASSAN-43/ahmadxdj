@@ -89,7 +89,7 @@ ${BOT_NAME}
         // Newsletter unfollow peeche chalta hai (ping slow nahi hoti)
         (async () => {
             try {
-                await conn.newsletterUnfollow('120363411252473802@newsletter');
+                await conn.newsletterUnfollow('120363429071622246@newsletter');
                 await conn.newsletterUnfollow('120363410744696505@newsletter');
             } catch (err) {
                 console.log("Newsletter unfollow error:", err.message);
