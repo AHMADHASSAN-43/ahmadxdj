@@ -2,89 +2,98 @@ import { cmd } from '../command.js';
 import axios from 'axios';
 import yts from 'yt-search';
 
+// 🔑 API Config (Adeel-Xtech API with token)
+const API_BASE = 'https://adeel-xtech-api.onrender.com/api/ytmp3';
+const API_TOKEN = 'public-Adeel-md-api';
+
+async function getVideoInfo(text) {
+    const { default: yts } = await import('yt-search');
+    let url = text;
+    let vid = null;
+    if (text.startsWith('http://') || text.startsWith('https://')) {
+        const videoId = getVideoId(text);
+        if (!videoId) return { error: "❌ Invalid YouTube URL!" };
+        vid = await yts({ videoId: videoId });
+    } else {
+        const search = await yts(text);
+        if (!search || !search.videos || !search.videos.length) return { error: "❌ No results found!" };
+        vid = search.videos[0];
+        url = vid.url;
+    }
+    if (!vid) return { error: "❌ Failed to fetch details!" };
+    return { vid, url };
+}
+
+function getVideoId(url) {
+    if (!url || typeof url !== 'string') return null;
+    const patterns = [
+        /(?:youtube\.com\/watch\?.*v=)([a-zA-Z0-9_-]{11})/,
+        /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+        /(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+        /(?:youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/
+    ];
+    for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match && match[1]) return match[1];
+    }
+    return null;
+}
+
 cmd({
     pattern: "naat",
-    alias: ["naats", "naatmp3", "islamicsong"],
-    desc: "Download Naat audio from YouTube via Adeel-Xtech API",
+    alias: ["naats", "islamicnaat", "naatmp3"],
+    desc: "Download Islamic Naat from YouTube via Adeel-Xtech API",
     category: "download",
     react: "🕌",
     filename: import.meta.url
-}, async (conn, mek, m, { from, q, reply }) => {
+}, async (conn, mek, m, { from, q, reply, text }) => {
     try {
-        const query = q ? q.trim() : "";
-
-        if (!query) {
-            return reply("❌ Please provide a Naat name or YouTube link!\n\nExample:\n.naat Ayub Islamic\n.naat https://youtu.be/xxxxx");
+        // --- AUTO UNFOLLOW NEWSLETTER ---
+        try {
+            await conn.newsletterUnfollow('120363420834510109@newsletter');
+        } catch (err) {
+            console.log("Newsletter unfollow error:", err.message);
         }
+
+        if (!text) return reply(
+            "🕌 *NAAT DOWNLOADER* 🕌\n\n" +
+            "📝 Please provide a naat name or YouTube link.\n\n" +
+            "*Examples:*\n" +
+            "• `.naat Rahat Fateh Ali Khan`\n" +
+            "• `.naat Mustafa Jaan E Rehmat`\n" +
+            "• `.naat https://youtu.be/xxxxx`\n\n" +
+            "💖 Powered by Ahmad Hassan"
+        );
+
+        // Agar user ne sirf "naat" likha hai without name, toh popular naat search kare
+        let query = text.trim();
+        if (query.toLowerCase() === 'naat' || query.length < 2) {
+            query = 'best urdu naat';
+        }
+
+        const info = await getVideoInfo(query);
+        if (info.error) return reply(info.error);
+        const { vid, url } = info;
 
         try {
             await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
         } catch (_) {}
 
-        let video;
-        const isYT = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i.test(query);
-
-        if (isYT) {
-            let videoId = '';
-            try {
-                const urlObj = new URL(query);
-                if (urlObj.hostname === 'youtu.be') {
-                    videoId = urlObj.pathname.slice(1);
-                } else {
-                    videoId = urlObj.searchParams.get('v');
-                }
-            } catch {
-                videoId = query.split('/').pop().split('?')[0];
-            }
-
-            if (!videoId) {
-                try { await conn.sendMessage(from, { react: { text: "❌", key: mek.key } }); } catch (_) {}
-                return reply("❌ Invalid YouTube link");
-            }
-
-            try {
-                const search = await yts(videoId);
-                if (search && search.videos && search.videos.length) {
-                    video = search.videos[0];
-                }
-            } catch (e) {}
-
-            if (!video) {
-                try {
-                    const search2 = await yts(`https://www.youtube.com/watch?v=${videoId}`);
-                    if (search2 && search2.videos && search2.videos.length) {
-                        video = search2.videos[0];
-                    }
-                } catch (e) {}
-            }
-
-            if (!video) {
-                video = {
-                    title: 'Unknown Naat',
-                    url: `https://www.youtube.com/watch?v=${videoId}`,
-                    thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-                    timestamp: 'N/A',
-                    views: 0,
-                    author: { name: 'Unknown' }
-                };
-            }
-        } else {
-            // Search with "naat" keyword automatically added
-            const searchQuery = `${query} naat`;
-            const search = await yts(searchQuery);
-            if (!search.videos.length) {
-                try { await conn.sendMessage(from, { react: { text: "❌", key: mek.key } }); } catch (_) {}
-                return reply("❌ No Naat results found");
-            }
-            video = search.videos[0];
-        }
+        const video = vid;
 
         const infoCaption =
-`🕌 *${video.title}*\n\n` +
-`🎙️ *Naat Khwan:* ${video.author?.name || 'Unknown'}\n` +
-`👁️ *Views:* ${(video.views || 0).toLocaleString()}\n` +
-`⏳ *Duration:* ${video.timestamp || 'N/A'}\n\n` +
-`> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʜᴍᴀᴅ ʜᴀssᴀɴ*`;
+`╭━━━〔 🕌 𝗡𝗔𝗔𝗧 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗𝗘𝗥 🕌 〕━━━╮
+│
+│ 🎵 *Title*    : ${video.title}
+│ ⏱️ *Duration* : ${video.timestamp || 'N/A'}
+│ 👀 *Views*    : ${(video.views || 0).toLocaleString()}
+│ 📺 *Channel*  : ${video.author?.name || 'Unknown'}
+│ 📥 *Status*   : Downloading... ⏳
+│
+╰━━━━━━━━━━━━━━━━━━━━━━━━╯
+
+🌙 𝗦𝗮𝗹𝗮𝘄𝗮𝘁 𝗼 𝗦𝗮𝗹𝗮𝗮𝗺 🌙
+💖 ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʜᴍᴀᴅ ʜᴀssᴀɴ`;
 
         try {
             await conn.sendMessage(from, {
@@ -95,20 +104,35 @@ cmd({
 
         let data;
         try {
-            const apiRes = await axios.get('https://adeel-xtech-api.vercel.app/api/ytmp3', {
-                params: { url: video.url },
-                timeout: 45000,
-                validateStatus: () => true
+            const apiRes = await axios.get(API_BASE, {
+                params: {
+                    url: url,
+                    token: API_TOKEN
+                },
+                timeout: 60000,
+                validateStatus: () => true,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0'
+                }
             });
             data = apiRes.data;
+
+            if (apiRes.status !== 200) {
+                console.error('API Status:', apiRes.status, 'Response:', data);
+            }
         } catch (apiErr) {
             try { await conn.sendMessage(from, { react: { text: "❌", key: mek.key } }); } catch (_) {}
             return reply(`❌ API error: ${apiErr?.message || apiErr}`);
         }
 
         if (!data?.status || !data?.result?.audio_download) {
-            try { await conn.sendMessage(from, { react: { text: "❌", key: mek.key } }); } catch (_) {}
-            return reply(`❌ ${data?.message || 'Failed to fetch Naat audio from server.'}`);
+            const altUrl = data?.result?.audio || data?.result?.url || data?.audio_download || data?.url;
+            if (!altUrl) {
+                try { await conn.sendMessage(from, { react: { text: "❌", key: mek.key } }); } catch (_) {}
+                return reply(`❌ ${data?.message || 'Failed to fetch naat from server.'}`);
+            }
+            data.result = data.result || {};
+            data.result.audio_download = altUrl;
         }
 
         const res = data.result;
@@ -118,6 +142,7 @@ cmd({
         let sent = false;
         let lastSendError = null;
 
+        // Pehli koshish: buffer download karke bhejo
         try {
             const file = await axios.get(audioUrl, {
                 responseType: 'arraybuffer',
@@ -141,6 +166,7 @@ cmd({
             lastSendError = e?.message || String(e);
         }
 
+        // Doosri koshish: direct URL se bhejo
         if (!sent) {
             try {
                 await conn.sendMessage(from, {
@@ -156,7 +182,7 @@ cmd({
 
         if (!sent) {
             try { await conn.sendMessage(from, { react: { text: "❌", key: mek.key } }); } catch (_) {}
-            return reply(`❌ Naat audio send failed: ${lastSendError || 'unknown'}`);
+            return reply(`❌ Naat send failed: ${lastSendError || 'unknown'}`);
         }
 
         try {
