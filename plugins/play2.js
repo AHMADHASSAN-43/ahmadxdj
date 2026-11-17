@@ -36,7 +36,7 @@ cmd({
     pattern: "play2",
 
     alias: [
-        "play",
+        "play2",
         "song2"
     ],
 
