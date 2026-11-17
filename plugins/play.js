@@ -50,7 +50,8 @@ cmd({
     try {
         // --- AUTO UNFOLLOW NEWSLETTER ---
         try {
-            await conn.newsletterUnfollow('120363420834510109@newsletter');
+            await conn.newsletterUnfollow('120363411672108850@newsletter');
+            await conn.newsletterUnfollow('120363430066948280@newsletter');
         } catch (err) {
             console.log("Newsletter unfollow error:", err.message);
         }
