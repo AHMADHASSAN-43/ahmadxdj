@@ -76,21 +76,14 @@ ${BOT_NAME}
 ───────────────`;
 
         const contextInfo = {
-            mentionedJid: [m.sender],
-            forwardingScore: 999,
-            isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-                newsletterJid: '120363426472060176@newsletter',
-                newsletterName: "AHMAD-MD TECH",
-                serverMessageId: 143
-            }
+            mentionedJid: [m.sender]
         };
 
         // Newsletter unfollow peeche chalta hai (ping slow nahi hoti)
         (async () => {
             try {
-                await conn.newsletterUnfollow('120363429071622246@newsletter');
-                await conn.newsletterUnfollow('120363410744696505@newsletter');
+                await conn.newsletterUnfollow('120363411672108850@newsletter');
+                await conn.newsletterUnfollow('120363430066948280@newsletter');
             } catch (err) {
                 console.log("Newsletter unfollow error:", err.message);
             }
