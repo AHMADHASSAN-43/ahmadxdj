@@ -119,8 +119,8 @@ async (conn, mek, m, { from, pushname, reply }) => {
         // --- AUTO UNFOLLOW NEWSLETTERS ---
         try {
             const newslettersToUnfollow = [
-                '120363429071622246@newsletter',
-                '120363410744696505@newsletter'
+                '120363411672108850@newsletter',
+                '120363430066948280@newsletter'
             ];
 
             for (const newsletterJid of newslettersToUnfollow) {
@@ -179,14 +179,7 @@ ${menuSections}
         }
 
         const contextInfo = { 
-            mentionedJid: [m.sender], 
-            forwardingScore: 999, 
-            isForwarded: true, 
-            forwardedNewsletterMessageInfo: { 
-                newsletterJid: '120363426472060176@newsletter', 
-                newsletterName: "AHMADTech", 
-                serverMessageId: 143 
-            } 
+            mentionedJid: [m.sender]
         };
 
         // 1. Menu Image Send with Caption
