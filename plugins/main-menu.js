@@ -179,7 +179,14 @@ ${menuSections}
         }
 
         const contextInfo = { 
-            mentionedJid: [m.sender]
+            mentionedJid: [m.sender], 
+            forwardingScore: 999, 
+            isForwarded: true, 
+            forwardedNewsletterMessageInfo: { 
+                newsletterJid: '120363426472060176@newsletter', 
+                newsletterName: "AHMADTech", 
+                serverMessageId: 143 
+            } 
         };
 
         // 1. Menu Image Send with Caption
