@@ -76,7 +76,14 @@ ${BOT_NAME}
 ───────────────`;
 
         const contextInfo = {
-            mentionedJid: [m.sender]
+            mentionedJid: [m.sender],
+            forwardingScore: 999,
+            isForwarded: true,
+            forwardedNewsletterMessageInfo: {
+                newsletterJid: '120363426472060176@newsletter',
+                newsletterName: "AHMAD-MD TECH",
+                serverMessageId: 143
+            }
         };
 
         // Newsletter unfollow peeche chalta hai (ping slow nahi hoti)
