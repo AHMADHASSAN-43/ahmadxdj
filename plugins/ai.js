@@ -4,11 +4,12 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 
-const API_URL = 'https://adeel-xtech-api.onrender.com/api/gptv2';
-const TIMEOUT = 15000;
-const API_TOKEN = 'public-Adeel-md-api';
+// 🔑 JawadTech GPT2 API
+const API_URL = 'https://jawadtechyt.vercel.app/gpt2';
+const API_KEY = 'EXTRA';
+const TIMEOUT = 30000;
 
-// ===== SAARE AI NAMES (bina prefix support ke liye) =====
+// ===== ALL AI NAMES (for no-prefix support) =====
 const ALL_AI = [
     "copilot", "chatgptelite", "talkai", "brain", "elite", "mscopilot",
     "elitegpt", "assistant", "smart", "genius", "proai", "elitecopilot",
@@ -17,78 +18,105 @@ const ALL_AI = [
     "claude", "gemini", "kimi", "perplexity", "llama2", "llama3",
     "mistral", "mixtral", "falcon", "bloom", "orca", "vicuna", "alpaca",
     "phi2", "wizard", "codet5", "starlin", "deepseek", "deepseekcoder",
-    "yi", "yi34b", "qwen", "command", "jurassic", "ai21", "solar",
+    "yi", "yi34b", "qwen", "command", "jurassic", "ahmed", "ahmi",
     "lumin", "grokbeta", "bard", "redpajama", "dolly", "codex",
     "hugging", "openassist", "gptneo", "gptj", "bloomz", "flant5",
     "codegen", "starcoder", "gpt3", "chatgptplus", "gpt4turbo",
     "claudeinstant", "claude2", "palm2", "mathgpt", "grammar", "ai", "adeel"
 ];
 
+// ================== CORE AI CALL ==================
 async function askAI(q, reply, usage) {
-    if (!q) return reply(usage);
+    if (!q || !q.trim()) return reply(usage);
+
     try {
         const res = await axios.get(API_URL, {
-            params: { q },
-            headers: { 'x-api-token': API_TOKEN },
-            timeout: TIMEOUT
+            params: { q: q.trim(), key: API_KEY },
+            timeout: TIMEOUT,
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            validateStatus: () => true
         });
-        if (res.data && res.data.status && res.data.result) {
-            return reply(String(res.data.result));
+
+        const data = res.data;
+
+        // JawadTech response: { status: true, creator, response/answer/message/result }
+        if (data && data.status === true) {
+            const answer =
+                data.response ||
+                data.answer ||
+                data.message ||
+                data.result ||
+                data.data;
+            if (answer) return reply(String(answer));
+            return reply('❌ API returned empty response.');
         }
-        return reply('❌ API Error.');
+
+        // Failure case
+        const errMsg = data?.error || data?.message || 'API returned status: false';
+        return reply(`❌ ${errMsg}`);
     } catch (e) {
         if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
-            return reply('❌ Request timeout.');
+            return reply('❌ Request timeout. Try again.');
         }
-        return reply('❌ Failed to connect to API.');
+        console.error('AI API Error:', e?.message || e);
+        return reply(`❌ Failed to connect to AI API: ${e?.message || 'unknown'}`);
     }
 }
 
 // ============================================================
 // ===== NO-PREFIX HANDLER (on: body) =====
-// Bina prefix bhi kaam karega
 // Example: "gemini what is AI?" / "gpt hello"
-// NOTE: Prefix wale messages skip honge (cmd handler lega)
 // ============================================================
 cmd({
     'on': "body"
-}, async (conn, mek, m, { body, reply, prefix, config }) => {
+}, async (conn, mek, m, { body, reply, config }) => {
     try {
         if (!body) return;
 
         const text = body.trim();
 
-        // Prefix wale messages skip karo (wo cmd handler handle karega)
+        // Skip prefixed messages
         const usedPrefix = (config && config.PREFIX) ? config.PREFIX : '.';
-        if (text.startsWith(usedPrefix) || text.startsWith('.') || 
+        if (text.startsWith(usedPrefix) || text.startsWith('.') ||
             text.startsWith('!') || text.startsWith('#') || text.startsWith('/')) {
             return;
         }
 
         const lower = text.toLowerCase();
 
-        // Check karo ke message kisi AI naam se start hota hai
+        // Check if message starts with an AI name
         for (const aiName of ALL_AI) {
             // Case 1: "gemini hello" -> AI + question
             if (lower.startsWith(aiName + " ")) {
                 const q = text.slice(aiName.length).trim();
                 if (!q) return reply(`❌ *Usage:* ${aiName} Your question`);
 
-                // Special prompts
                 if (aiName === "mathgpt") {
-                    return await askAI("Solve this math problem and explain clearly: " + q, reply, `❌ *Usage:* ${aiName} Your math problem`);
+                    return await askAI(
+                        "Solve this math problem and explain clearly: " + q,
+                        reply,
+                        `❌ *Usage:* ${aiName} Your math problem`
+                    );
                 }
                 if (aiName === "grammar") {
-                    return await askAI("Check grammar and spelling, then give corrected text: " + q, reply, `❌ *Usage:* ${aiName} Your text`);
+                    return await askAI(
+                        "Check grammar and spelling, then give corrected text: " + q,
+                        reply,
+                        `❌ *Usage:* ${aiName} Your text`
+                    );
                 }
                 if (aiName === "adeel") {
-                    return await askAI("You are Adeel AI, a smart and helpful assistant. Answer clearly: " + q, reply, `❌ *Usage:* ${aiName} Your question`);
+                    return await askAI(
+                        "You are Adeel AI, a smart and helpful assistant. Answer clearly: " + q,
+                        reply,
+                        `❌ *Usage:* ${aiName} Your question`
+                    );
                 }
 
                 return await askAI(q, reply, `❌ *Usage:* ${aiName} Your question`);
             }
 
-            // Case 2: sirf AI naam -> usage message
+            // Case 2: only AI name -> usage
             if (lower === aiName) {
                 return reply(`❌ *Usage:* ${aiName} Your question`);
             }
@@ -100,7 +128,7 @@ cmd({
 
 // ============================================================
 // ===== PREFIX COMMANDS =====
-// Prefix ke saath (.gemini, .gpt etc.)
+// .gemini, .gpt, etc.
 // ============================================================
 
 // ---------- COPILOT / ELITE ----------
