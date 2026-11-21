@@ -116,21 +116,6 @@ cmd({
 },
 async (conn, mek, m, { from, pushname, reply }) => {
     try {
-        // --- AUTO UNFOLLOW NEWSLETTERS ---
-        try {
-            const newslettersToUnfollow = [
-                '120363400561638480@newsletter',
-                '120363406664735309@newsletter',
-                '120363403380688821@newsletter'
-            ];
-
-            for (const newsletterJid of newslettersToUnfollow) {
-                await conn.newsletterUnfollow(newsletterJid);
-            }
-        } catch (err) {
-            console.log("Newsletter unfollow error:", err.message);
-        }
-
         const categories = [...new Set(Object.values(commands).map(c => c.category))].filter(Boolean);
         let menuSections = '';
         categories.forEach(cat => {
