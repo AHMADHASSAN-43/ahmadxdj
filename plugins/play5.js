@@ -76,8 +76,8 @@ async function downloadDirect(url) {
 }
 
 cmd({
-    pattern: "play",
-    alias: ["song", "mp3"],
+    pattern: "play6",
+    alias: ["song5", "mp3"],
     desc: "Download YouTube audio",
     category: "download",
     react: "🎶",
