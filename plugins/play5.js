@@ -56,7 +56,29 @@ async function downloadViaApi(url) {
     return buf;
 }
 
-// Tareeqa 2: bot ke andar hi seedha download (npm i @distube/ytdl-core)
+// Tareeqa 2: Adeel-Xtech API (koi package install nahi chahiye)
+async function downloadViaAdeel(url) {
+    const api = await axios.get('https://adeel-xtech-api.onrender.com/api/ytmp3', {
+        params: { url, token: 'public-Adeel-md-api' },
+        timeout: 60000,
+        validateStatus: () => true,
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    const d = api.data;
+    const link = d?.result?.audio_download || d?.result?.audio || d?.result?.url || d?.audio_download || d?.url;
+    if (!link) throw new Error(d?.message || `Adeel API status ${api.status}`);
+    const file = await axios.get(link, {
+        responseType: 'arraybuffer',
+        timeout: 90000,
+        maxContentLength: MAX_SIZE,
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept': '*/*' }
+    });
+    const buf = Buffer.from(file.data);
+    if (buf.length < 10000) throw new Error('Adeel API returned empty audio');
+    return buf;
+}
+
+// Tareeqa 3: bot ke andar hi seedha download (npm i @distube/ytdl-core)
 async function downloadDirect(url) {
     const mod = await import('@distube/ytdl-core');
     const ytdl = mod.default || mod;
@@ -76,8 +98,8 @@ async function downloadDirect(url) {
 }
 
 cmd({
-    pattern: "play6",
-    alias: ["song5", "mp3"],
+    pattern: "play",
+    alias: ["song", "mp3"],
     desc: "Download YouTube audio",
     category: "download",
     react: "🎶",
@@ -130,6 +152,15 @@ cmd({
         } catch (e) {
             errors.push(`API: ${e?.message || e}`);
             console.error('Play API download failed:', e?.message || e);
+        }
+
+        if (!buffer) {
+            try {
+                buffer = await downloadViaAdeel(song.url);
+            } catch (e) {
+                errors.push(`Adeel: ${e?.message || e}`);
+                console.error('Play Adeel download failed:', e?.message || e);
+            }
         }
 
         if (!buffer) {
