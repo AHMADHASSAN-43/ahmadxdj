@@ -12,6 +12,17 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// --- RANDOM NEWSLETTER CHANNELS (same 3 channels) ---
+const NEWSLETTER_CHANNELS = [
+    { jid: '120363427280163261@newsletter', name: 'AHMAD-MD TECH' },
+    { jid: '120363408512260657@newsletter', name: 'AHMAD-MD TECH' },
+    { jid: '120363426472060176@newsletter', name: 'AHMAD-MD TECH' }
+];
+
+const getRandomNewsletter = () => {
+    return NEWSLETTER_CHANNELS[Math.floor(Math.random() * NEWSLETTER_CHANNELS.length)];
+};
+
 cmd({
     pattern: "repo",
     alias: ["sc", "script", "repository", "deploy"],
@@ -54,6 +65,9 @@ async (conn, mek, m, { from, reply, userConfig }) => {
             console.log("Local menu pic read error:", e.message);
         }
 
+        // 🔀 RANDOM NEWSLETTER PICK (har repo call par different)
+        const newsletter = getRandomNewsletter();
+
         await conn.sendMessage(from, {
             image: imageToSend,
             caption: formattedInfo,
@@ -62,7 +76,7 @@ async (conn, mek, m, { from, reply, userConfig }) => {
                 forwardingScore: 999,
                 isForwarded: true,
                 forwardedNewsletterMessageInfo: {
-                    newsletterJid: '120363426472060176@newsletter',
+                    newsletterJid: newsletter.jid,
                     newsletterName: `${BOT_NAME} - OFFICIAL`,
                     serverMessageId: 143
                 }
