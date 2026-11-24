@@ -17,6 +17,17 @@ const IMAGES = [
     "https://files.catbox.moe/2maqd9.jpg"
 ];
 
+// --- RANDOM NEWSLETTER CHANNELS (same 3 channels) ---
+const NEWSLETTER_CHANNELS = [
+    { jid: '120363427280163261@newsletter', name: 'AHMAD-MD TECH' },
+    { jid: '120363408512260657@newsletter', name: 'AHMAD-MD TECH' },
+    { jid: '120363426472060176@newsletter', name: 'AHMAD-MD TECH' }
+];
+
+const getRandomNewsletter = () => {
+    return NEWSLETTER_CHANNELS[Math.floor(Math.random() * NEWSLETTER_CHANNELS.length)];
+};
+
 // Image pehle download hoti hai (4 sec limit) aur yaad rakhi jati hai,
 // is se ping fast aati hai aur catbox down ho to bot atakta nahi.
 const imageCache = {};
@@ -75,13 +86,16 @@ ${BOT_NAME}
 
 ───────────────`;
 
+        // 🔀 RANDOM NEWSLETTER PICK (har ping par different)
+        const newsletter = getRandomNewsletter();
+
         const contextInfo = {
             mentionedJid: [m.sender],
             forwardingScore: 999,
             isForwarded: true,
             forwardedNewsletterMessageInfo: {
-                newsletterJid: '120363426472060176@newsletter',
-                newsletterName: "AHMAD-MD TECH",
+                newsletterJid: newsletter.jid,
+                newsletterName: newsletter.name,
                 serverMessageId: 143
             }
         };
