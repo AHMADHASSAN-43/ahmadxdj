@@ -116,10 +116,32 @@ cmd({
 },
 async (conn, mek, m, { from, pushname, reply }) => {
     try {
-        const categories = [...new Set(Object.values(commands).map(c => c.category))].filter(Boolean);
+        const allCats = [...new Set(Object.values(commands).map(c => c.category))].filter(Boolean);
+
+        // Menu ka order: main -> download -> owner -> group -> utility -> other -> audio -> settings -> ai -> search -> baaki
+        const TOP_CATEGORIES = ['main', 'download', 'owner', 'group', 'utility', 'other', 'audio', 'settings', 'setting', 'ai', 'ai-pro', 'search'];
+        // Sab se neeche: fun aur baaki kam use hone wali
+        const BOTTOM_CATEGORIES = ['fun', 'unban', 'girldp', 'boydp', 'coupledp', 'anime', 'hack'];
+
+        const topCats = TOP_CATEGORIES.filter(c => allCats.includes(c));
+        const bottomCats = BOTTOM_CATEGORIES.filter(c => allCats.includes(c));
+        const middleCats = allCats.filter(c => !TOP_CATEGORIES.includes(c) && !BOTTOM_CATEGORIES.includes(c));
+        const categories = [...topCats, ...middleCats, ...bottomCats];
+
+        // Download section ke andar play wali commands sab se upar
+        const PLAY_FIRST = ['play', 'play2', 'play3', 'video', 'song', 'ytmp3', 'ytmp4'];
+        const sortCmds = (cat, list) => {
+            if (cat !== 'download') return list;
+            const rank = (c) => {
+                const i = PLAY_FIRST.indexOf((c.pattern || '').toLowerCase());
+                return i === -1 ? PLAY_FIRST.length : i;
+            };
+            return [...list].sort((a, b) => rank(a) - rank(b));
+        };
+
         let menuSections = '';
         categories.forEach(cat => {
-            const catCmds = Object.values(commands).filter(c => c.category === cat);
+            const catCmds = sortCmds(cat, Object.values(commands).filter(c => c.category === cat));
             menuSections += formatCategory(cat, catCmds);
         });
 
