@@ -8,6 +8,17 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// --- RANDOM NEWSLETTER CHANNELS (same 3 channels) ---
+const NEWSLETTER_CHANNELS = [
+    { jid: '120363427280163261@newsletter', name: 'AHMAD-MD TECH' },
+    { jid: '120363408512260657@newsletter', name: 'AHMAD-MD TECH' },
+    { jid: '120363426472060176@newsletter', name: 'AHMAD-MD TECH' }
+];
+
+const getRandomNewsletter = () => {
+    return NEWSLETTER_CHANNELS[Math.floor(Math.random() * NEWSLETTER_CHANNELS.length)];
+};
+
 cmd({
     pattern: "alive",
     desc: "Check uptime and system status",
@@ -47,13 +58,16 @@ async (conn, mek, m, { from, quoted, sender, reply }) => {
 
 > *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʜᴍᴀᴅ ʜᴀssᴀɴ*`;
 
+        // 🔀 RANDOM NEWSLETTER PICK (har alive call par different)
+        const newsletter = getRandomNewsletter();
+
         const contextInfo = {
             mentionedJid: [m.sender],
             forwardingScore: 999,
             isForwarded: true,
             forwardedNewsletterMessageInfo: {
-                newsletterJid: '120363426472060176@newsletter',
-                newsletterName: "AHMAD-MD TECH",
+                newsletterJid: newsletter.jid,
+                newsletterName: newsletter.name,
                 serverMessageId: 143
             }
         };
