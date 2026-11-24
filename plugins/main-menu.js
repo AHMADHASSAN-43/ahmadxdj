@@ -118,15 +118,16 @@ async (conn, mek, m, { from, pushname, reply }) => {
     try {
         const allCats = [...new Set(Object.values(commands).map(c => c.category))].filter(Boolean);
 
-        // Menu ka order: main -> download -> owner -> group -> utility -> other -> audio -> settings -> ai -> search -> baaki
-        const TOP_CATEGORIES = ['main', 'download', 'owner', 'group', 'utility', 'other', 'audio', 'settings', 'setting', 'ai', 'ai-pro', 'search'];
-        // Sab se neeche: fun aur baaki kam use hone wali
-        const BOTTOM_CATEGORIES = ['fun', 'unban', 'girldp', 'boydp', 'coupledp', 'anime', 'hack'];
+        // Menu ka order (upar se neeche). Jo category is list mein nahi hai wo sab se last mein aati hai.
+        const MENU_ORDER = [
+            'main', 'owner', 'download', 'group', 'utility', 'audio', 'misc', 'other',
+            'settings', 'setting', 'search', 'tools', 'reading', 'moderation',
+            'hayasong', 'haya', 'hack', 'fun', 'ai', 'ai-pro'
+        ];
 
-        const topCats = TOP_CATEGORIES.filter(c => allCats.includes(c));
-        const bottomCats = BOTTOM_CATEGORIES.filter(c => allCats.includes(c));
-        const middleCats = allCats.filter(c => !TOP_CATEGORIES.includes(c) && !BOTTOM_CATEGORIES.includes(c));
-        const categories = [...topCats, ...middleCats, ...bottomCats];
+        const orderedCats = MENU_ORDER.filter(c => allCats.includes(c));
+        const restCats = allCats.filter(c => !MENU_ORDER.includes(c));
+        const categories = [...orderedCats, ...restCats];
 
         // Download section ke andar play wali commands sab se upar
         const PLAY_FIRST = ['play', 'play2', 'play3', 'video', 'song', 'ytmp3', 'ytmp4'];
