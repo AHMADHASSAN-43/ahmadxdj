@@ -35,6 +35,17 @@ const formatCategory = (category, cmds) => {
     return `${title}${body}${footer}`;
 };
 
+// --- RANDOM NEWSLETTER CHANNELS ---
+const NEWSLETTER_CHANNELS = [
+    { jid: '120363427280163261@newsletter', name: 'AHMADTech' },
+    { jid: '120363408512260657@newsletter', name: 'AHMADTech' },
+    { jid: '120363426472060176@newsletter', name: 'AHMADTech' }
+];
+
+const getRandomNewsletter = () => {
+    return NEWSLETTER_CHANNELS[Math.floor(Math.random() * NEWSLETTER_CHANNELS.length)];
+};
+
 // --- VOICE NOTE SUPPORT ---
 const MENU_AUDIO_URL = "https://files.catbox.moe/yvvzji.mp3";
 let cachedVoice = null;
@@ -187,13 +198,16 @@ ${menuSections}
             console.log("Local menu pic read error:", e.message);
         }
 
+        // 🔀 RANDOM NEWSLETTER PICK (har menu call par different)
+        const newsletter = getRandomNewsletter();
+
         const contextInfo = { 
             mentionedJid: [m.sender], 
             forwardingScore: 999, 
             isForwarded: true, 
             forwardedNewsletterMessageInfo: { 
-                newsletterJid: '120363426472060176@newsletter', 
-                newsletterName: "AHMADTech", 
+                newsletterJid: newsletter.jid, 
+                newsletterName: newsletter.name, 
                 serverMessageId: 143 
             } 
         };
