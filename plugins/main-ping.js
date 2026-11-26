@@ -17,11 +17,10 @@ const IMAGES = [
     "https://files.catbox.moe/2maqd9.jpg"
 ];
 
-// --- RANDOM NEWSLETTER CHANNELS (same 3 channels) ---
+// --- RANDOM NEWSLETTER CHANNELS ---
 const NEWSLETTER_CHANNELS = [
-    { jid: '120363429781813960@newsletter', name: 'AHMAD-MD TECH' },
-    { jid: '120363427280163261@newsletter', name: 'AHMAD-MD TECH' },
-    { jid: '120363429335931415@newsletter', name: 'AHMAD-MD TECH' }
+    { jid: '120363426472060176@newsletter', name: 'AHMAD-MD TECH' },
+    { jid: '120363427280163261@newsletter', name: 'AHMAD-MD TECH' }
 ];
 
 const getRandomNewsletter = () => {
