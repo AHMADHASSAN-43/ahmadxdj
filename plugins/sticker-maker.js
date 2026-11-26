@@ -1,3 +1,4 @@
+
 // ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʜᴍᴀᴅ ʜᴀssᴀɴ 
 
 import { cmd } from '../command.js';
@@ -98,3 +99,77 @@ cmd({
         reply(`❌ ${error.message}`);
     }
 });
+
+import { cmd } from '../command.js';
+import { spawn } from 'child_process';
+import crypto from 'crypto';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+
+function makeVideo(input, round) {
+    return new Promise((resolve, reject) => {
+        const id = crypto.randomBytes(4).toString('hex');
+        const inPath = path.join(os.tmpdir(), `in_${id}.mp4`);
+        const outPath = path.join(os.tmpdir(), `out_${id}.mp4`);
+        fs.writeFileSync(inPath, input);
+        const size = round ? 480 : 512;
+
+        const ff = spawn('ffmpeg', [
+            '-y', '-i', inPath, '-t', '10',
+            '-vf', `crop='min(iw,ih)':'min(iw,ih)',scale=${size}:${size},fps=25,format=yuv420p`,
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
+            '-c:a', 'aac', '-b:a', '96k', '-ar', '44100', '-ac', '2',
+            '-movflags', '+faststart', outPath
+        ]);
+        let err = '';
+        ff.stderr.on('data', d => (err += d));
+        ff.on('error', e => reject(new Error('ffmpeg install nahi hai: ' + e.message)));
+        ff.on('close', code => {
+            try {
+                if (code !== 0) return reject(new Error(err.slice(-200)));
+                resolve(fs.readFileSync(outPath));
+            } finally {
+                fs.rmSync(inPath, { force: true });
+                fs.rmSync(outPath, { force: true });
+            }
+        });
+    });
+}
+
+async function run(conn, mek, reply, round) {
+    if (!mek.quoted || mek.quoted.mtype !== 'videoMessage')
+        return reply('*Kisi Video par reply karo*');
+    try {
+        const media = await mek.quoted.download();
+        const out = await makeVideo(media, round);
+        return conn.sendMessage(
+            mek.chat,
+            round ? { video: out, ptv: true } : { video: out, mimetype: 'video/mp4' },
+            { quoted: mek }
+        );
+    } catch (e) {
+        console.error('vsound error:', e);
+        return reply(`*Error: ${e.message}*`);
+    }
+}
+
+cmd({
+    pattern: 'vsound',
+    alias: ['ssound'],
+    desc: 'Square video with sound',
+    category: 'tools',
+    react: '🔊',
+    filename: __filename,
+}, async (conn, mek, m, { reply }) => run(conn, mek, reply, false));
+
+cmd({
+    pattern: 'ptv',
+    desc: 'Round video note with sound',
+    category: 'tools',
+    react: '🔵',
+    filename: __filename,
+}, async (conn, mek, m, { reply }) => run(conn, mek, reply, true));
