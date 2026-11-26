@@ -3,18 +3,22 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 
-// Helper: channel JID nikalo (channel ke andar ho to m.chat, warna args se)
-const getChannelJid = (m, args) => {
-    if (m.chat && m.chat.endsWith('@newsletter')) return m.chat;
-    const jid = args.find(a => a.endsWith('@newsletter'));
-    return jid || null;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Channel ki posts fetch karo (alag Baileys versions ke liye dono tareeqe)
+const fetchPosts = async (conn, jid, count = 100) => {
+    try {
+        return await conn.newsletterFetchMessages(jid, count);
+    } catch {
+        return await conn.newsletterFetchMessages('jid', jid, count);
+    }
 };
 
-// ================== CHANNEL DELETE COMMAND ====================
+// ================== CHANNEL DELETE ALL COMMAND ====================
 cmd({
-    pattern: "cdelete",
-    alias: ["cdel", "cdlt"],
-    desc: "Delete a post in your channel (reply to the post)",
+    pattern: "cdeleteall",
+    alias: ["cdelall", "cclear"],
+    desc: "Delete ALL posts of your channel",
     category: "channel",
     react: "🗑️",
     filename: __filename
@@ -28,75 +32,62 @@ cmd({
         // Check if sender is creator
         if (!isCreator) return reply('❌ Only the bot creator can use this command!');
 
-        // Check if message is quoted
-        if (!m.quoted) return reply('❌ Please reply to the channel post you want to delete!\n\nUsage:\n.cdelete (inside channel)\n.cdelete 1203xxxx@newsletter (from anywhere)');
+        // Channel JID (channel ke andar ho to m.chat, warna args se)
+        const channelJid = (m.chat && m.chat.endsWith('@newsletter'))
+            ? m.chat
+            : args.find(a => a.endsWith('@newsletter'));
 
-        // Channel JID
-        const channelJid = getChannelJid(m, args);
-        if (!channelJid) return reply('❌ Channel JID missing! Example:\n.cdelete 1203xxxxxxxx@newsletter');
+        if (!channelJid) return reply('❌ Channel JID missing!\n\nUsage:\n.cdeleteall 1203xxxx@newsletter confirm');
 
-        // Create the delete key
-        const key = {
-            remoteJid: channelJid,
-            fromMe: true,
-            id: m.quoted.id
-        };
+        // Safety confirmation
+        if (!args.includes('confirm')) {
+            return reply(`⚠️ This will delete ALL posts of the channel!\n\nTo continue send:\n.cdeleteall ${channelJid} confirm`);
+        }
 
-        // Delete the channel post
-        await conn.sendMessage(channelJid, { delete: key });
+        await reply('⏳ Deleting all channel posts, please wait...');
 
-        await reply('✅ Channel post deleted successfully!');
+        let deleted = 0;
+        let failed = 0;
+        const seen = new Set();
 
-    } catch (err) {
-        console.error(err);
-        await reply('❌ Failed to delete channel post. Make sure the bot is owner/admin of the channel.');
-    }
-});
+        // Max 20 rounds x 100 posts
+        for (let round = 0; round < 20; round++) {
+            const posts = await fetchPosts(conn, channelJid, 100);
+            if (!posts || posts.length === 0) break;
 
-// ================== CHANNEL EDIT COMMAND ====================
-cmd({
-    pattern: "cedit",
-    alias: ["cedt", "cedittext"],
-    desc: "Edit a text post in your channel (reply to the post)",
-    category: "channel",
-    react: "✏️",
-    filename: __filename
-}, async (conn, mek, m, {
-    from,
-    isCreator,
-    args,
-    q,
-    reply
-}) => {
-    try {
-        // Check if sender is creator
-        if (!isCreator) return reply('❌ Only the bot creator can use this command!');
+            let progress = false;
 
-        // Check if message is quoted
-        if (!m.quoted) return reply('❌ Please reply to the channel post you want to edit!\n\nUsage:\n.cedit new text (inside channel)\n.cedit 1203xxxx@newsletter new text');
+            for (const post of posts) {
+                const id = post.server_id || post.id || post.key?.id;
+                if (!id || seen.has(id)) continue;
+                seen.add(id);
+                progress = true;
 
-        // Channel JID
-        const channelJid = getChannelJid(m, args);
-        if (!channelJid) return reply('❌ Channel JID missing! Example:\n.cedit 1203xxxxxxxx@newsletter new text');
+                try {
+                    const key = {
+                        remoteJid: channelJid,
+                        fromMe: true,
+                        id: id
+                    };
+                    await conn.sendMessage(channelJid, { delete: key });
+                    deleted++;
+                } catch (e) {
+                    failed++;
+                    console.error('Delete failed for', id, e?.message);
+                }
 
-        // New text (JID hata ke baaki text)
-        const newText = (q || '').replace(channelJid, '').trim();
-        if (!newText) return reply('❌ Please provide the new text for the post!');
+                // Rate limit se bachne ke liye delay
+                await sleep(1500);
+            }
 
-        // Create the edit key
-        const key = {
-            remoteJid: channelJid,
-            fromMe: true,
-            id: m.quoted.id
-        };
+            // Agar koi nayi post nahi mili to ruk jao
+            if (!progress) break;
+        }
 
-        // Edit the channel post
-        await conn.sendMessage(channelJid, { text: newText, edit: key });
-
-        await reply('✅ Channel post edited successfully!');
+        await reply(`✅ Done!\n\n🗑️ Deleted: ${deleted}\n❌ Failed: ${failed}`);
 
     } catch (err) {
         console.error(err);
-        await reply('❌ Failed to edit channel post. Make sure the bot is owner/admin of the channel and the post is a text post.');
+        await reply('❌ Failed to delete channel posts. Make sure the bot is owner/admin of the channel.');
     }
 });
