@@ -4,20 +4,19 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 
-// 🔑 JawadTech TikTok API
-const API_BASE = 'https://jawadtechyt.vercel.app/tt';
-const API_KEY = 'EXTRA';
+// 🔑 JawadTech TikTok API (new)
+const API_BASE = 'https://jawad-tech.vercel.app/download/tiktok';
 const TIMEOUT = 60000;
 
 // ============ HELPERS ============
 async function fetchTikTok(url) {
-    const res = await axios.get(API_BASE, {
-        params: { url, key: API_KEY },
+    const apiUrl = `${API_BASE}?url=${encodeURIComponent(url)}`;
+    const { data } = await axios.get(apiUrl, {
         timeout: TIMEOUT,
         validateStatus: () => true,
         headers: { 'User-Agent': 'Mozilla/5.0' }
     });
-    return res.data;
+    return data;
 }
 
 function pickVideoUrl(data) {
