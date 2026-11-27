@@ -13,26 +13,24 @@ const __filename = fileURLToPath(import.meta.url);
 
 
 // ==========================================
-// FREE AI VIDEO API
+// QADEER XTECH AI VIDEO API
 // ==========================================
 
 const freevideo = {
 
     api: {
-        base: "https://www.freeaivideos.org",
+        base: "https://qadeer-xtech-apis.vercel.app",
 
         endpoint: {
-            generate: "/api/video_generation",
+            generate: "/ai/aivideo",
 
             request: (id) =>
-                `/api/video_generation?request_id=${id}&prompt=`
+                `/ai/aivideostatus?task_id=${id}`
         }
     },
 
     headers: {
-        "user-agent": "NB Android/1.0.0",
-        "origin": "https://www.freeaivideos.org",
-        "referer": "https://www.freeaivideos.org/",
+        "user-agent": "Mozilla/5.0 (Linux; Android 10)",
         "accept": "*/*"
     },
 
@@ -43,44 +41,30 @@ const freevideo = {
 
     generate: async ({ prompt, imageBuffer = null } = {}) => {
 
-        const form = new FormData();
-
-        form.append(
-            "prompt",
-            prompt || "animate this image"
-        );
-
-        if (imageBuffer) {
-
-            form.append(
-                "initialFrame",
-                imageBuffer,
-                {
-                    filename: "image.jpg",
-                    contentType: "image/jpeg"
-                }
-            );
-
-        }
-
         try {
 
-            const res = await axios.post(
-                `${freevideo.api.base}${freevideo.api.endpoint.generate}`,
-                form,
+            const res = await axios.get(
+                `${freevideo.api.base}${freevideo.api.endpoint.generate}?prompt=${encodeURIComponent(prompt || "animate this image")}`,
                 {
-                    headers: {
-                        ...freevideo.headers,
-                        ...form.getHeaders()
-                    },
-
+                    headers: freevideo.headers,
                     timeout: 60000
                 }
             );
 
+            if (!res.data?.task_id) {
+
+                return {
+                    success: false,
+                    error:
+                        res.data?.message ||
+                        "No task_id received"
+                };
+
+            }
+
             return {
                 success: true,
-                request_id: res.data?.request_id
+                request_id: res.data.task_id
             };
 
         } catch (err) {
@@ -93,7 +77,7 @@ const freevideo = {
             return {
                 success: false,
                 error:
-                    err.response?.data?.error ||
+                    err.response?.data?.message ||
                     err.message
             };
 
@@ -146,11 +130,34 @@ const freevideo = {
                         }
                     );
 
-                    if (res.data?.video_url) {
+                    const data = res.data || {};
+
+                    // Completed → video ready
+                    if (
+                        data.task_status === "completed" &&
+                        (data.video_url || data.videoUrl)
+                    ) {
 
                         return resolve({
                             success: true,
-                            data: res.data
+                            data: {
+                                ...data,
+                                video_url:
+                                    data.video_url ||
+                                    data.videoUrl
+                            }
+                        });
+
+                    }
+
+                    // Failed
+                    if (data.task_status === "failed") {
+
+                        return resolve({
+                            success: false,
+                            error:
+                                data.message ||
+                                "Generation failed"
                         });
 
                     }
@@ -314,7 +321,7 @@ Reply to an image with:
             return reply(
                 `❌ Error: ${
                     generateResult.error ||
-                    "Failed to get request ID"
+                    "Failed to get task ID"
                 }`
             );
 
