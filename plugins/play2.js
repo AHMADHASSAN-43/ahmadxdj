@@ -33,7 +33,7 @@ async function getAudioLink(query) {
 // ─────────────────────────────────────────────
 cmd({
     pattern: 'play2',
-    alias: ['song2', 'song3', 'audio2'],
+    alias: ['song2', 'song3', 'play3'],
     desc: 'Download YouTube audio (MP3)',
     category: 'download',
     react: '🎶',
