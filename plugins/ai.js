@@ -1,282 +1,238 @@
 import { cmd } from '../command.js';
 import axios from 'axios';
-import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
+// 🔑 API Config
+const API_BASE = 'https://api-ahmadxmd.vercel.app';
+const API_KEY  = 'EXTRA';
 
-// ============================================================
-// ===== API CONFIGURATION (2 APIs with fallback) =====
-// ============================================================
-const API_1 = 'https://api-ahmadxmd.vercel.app/gpt';
-const API_1_KEY = 'EXTRA';
-
-const API_2 = 'https://jawadtechyt.vercel.app/gpt2';
-const API_2_KEY = 'EXTRA';
-
-const TIMEOUT = 30000;
-
-// ===== 50 FAMOUS AI NAMES (Standard + Pro mixed) =====
-const ALL_AI = [
-    // ---- Top Famous AI (25) ----
-    "gpt", "gpt4", "gpt4o", "chatgpt", "chatgptplus",
-    "gemini", "claude", "claude2", "copilot", "mscopilot",
-    "deepseek", "deepseekcoder", "grokbeta", "bard", "palm2",
-    "llama2", "llama3", "mistral", "mixtral", "perplexity",
-    "kimi", "qwen", "yi", "falcon", "ahmed",
-
-    // ---- Pro AI (25) ----
-    "chatgptpro", "geminipro", "claudepro", "grokpro", "copilotpro",
-    "deepseekpro", "llamapro", "mistralpro", "perplexitypro", "kimipro",
-    "qwenpro", "yipro", "bardpro", "falconpro", "wizardpro",
-    "chatgptelite", "elitegpt", "elitecopilot", "elite", "proai",
-    "brain", "smart", "genius", "ultra", "nova"
-];
-
-// ============================================================
-// ===== SMART CORE AI CALL (tries API 1 -> then API 2) =====
-// ============================================================
-async function askAI(q, reply, usage) {
-    if (!q || !q.trim()) return reply(usage);
-    const query = q.trim();
-
-    // ---- Try API 1 first (AhmadXMD) ----
+// ─────────────────────────────────────────────
+// HELPER — call any platform endpoint
+// ─────────────────────────────────────────────
+async function askAI(platform, q) {
     try {
-        const res = await axios.get(API_1, {
-            params: { q: query, key: API_1_KEY },
-            timeout: TIMEOUT,
-            headers: { 'User-Agent': 'Mozilla/5.0' },
-            validateStatus: () => true
-        });
-        const data = res.data;
-        if (data && data.status === true && data.result) {
-            return reply(String(data.result));
-        }
+        const apiUrl = `${API_BASE}/${platform}?q=${encodeURIComponent(q)}&key=${API_KEY}`;
+        const res = await axios.get(apiUrl, { timeout: 30000 });
+        if (res.data?.status && res.data?.result) return res.data.result;
+        if (res.data?.result) return res.data.result;
+        console.error(`⚠️ /${platform} bad response:`, res.data);
     } catch (e) {
-        // silently fall through to API 2
+        console.error(`⚠️ /${platform} failed:`, e.message);
     }
-
-    // ---- Fallback API 2 (JawadTech) ----
-    try {
-        const res = await axios.get(API_2, {
-            params: { q: query, key: API_2_KEY },
-            timeout: TIMEOUT,
-            headers: { 'User-Agent': 'Mozilla/5.0' },
-            validateStatus: () => true
-        });
-        const data = res.data;
-        if (data && data.status === true) {
-            const answer =
-                data.response ||
-                data.answer ||
-                data.message ||
-                data.result ||
-                data.data;
-            if (answer) return reply(String(answer));
-        }
-        const errMsg = data?.error || data?.message || 'API returned status: false';
-        return reply(`❌ ${errMsg}`);
-    } catch (e) {
-        if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
-            return reply('❌ Request timeout. Try again.');
-        }
-        console.error('AI API Error:', e?.message || e);
-        return reply(`❌ Failed to connect to AI API: ${e?.message || 'unknown'}`);
-    }
+    return null;
 }
 
-// ============================================================
-// ===== NO-PREFIX HANDLER (on: body) =====
-// Example: "gpt hello" / "chatgptpro what is AI?"
-// ============================================================
+// ─────────────────────────────────────────────
+// FACTORY — build a command per AI
+// ─────────────────────────────────────────────
+function makeAICommand({ pattern, platform, alias = [], desc, react = '🤖' }) {
+    cmd({
+        pattern,
+        alias,
+        desc: desc || `${platform} AI chat`,
+        category: 'ai',
+        react,
+        filename: import.meta.url
+    }, async (conn, mek, m, { from, reply, text }) => {
+        try {
+            if (!text) {
+                return reply(
+                    `🤖 *${platform.toUpperCase()} AI*\n\n` +
+                    `📝 *Usage:*\n` +
+                    `• .${pattern} Hello, how are you?\n` +
+                    `• .${pattern} Write a poem about the moon`
+                );
+            }
+
+            try { await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } }); } catch (_) {}
+
+            const answer = await askAI(platform, text);
+            if (!answer) {
+                try { await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }); } catch (_) {}
+                return reply(`❌ ${platform} AI failed to respond. Try again later.`);
+            }
+
+            const out =
+`╭━━━〔 🤖 ${platform.toUpperCase()} 𝗔𝗜 〕━━━╮
+│
+│ 💬 *Q:* ${text.slice(0, 200)}${text.length > 200 ? '...' : ''}
+│
+│ 🧠 *A:*
+│ ${answer}
+│
+╰━━━━━━━━━━━━━━━━━━━━━━━╯
+
+💖 ᴘᴏᴡᴇʀᴇᴅ ʙʏ AHMAD-MD ⚡`;
+
+            try {
+                await conn.sendMessage(from, { text: out }, { quoted: mek });
+            } catch (_) {
+                await reply(out);
+            }
+
+            try { await conn.sendMessage(from, { react: { text: '✅', key: mek.key } }); } catch (_) {}
+
+        } catch (e) {
+            console.error(`${pattern} error:`, e);
+            try { await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }); } catch (_) {}
+            reply(`❌ Error: ${e?.message || e}`);
+        }
+    });
+}
+
+// ─────────────────────────────────────────────
+// 🧠 70+ AI COMMANDS — FAMOUS MODELS
+// ─────────────────────────────────────────────
+const AI_LIST = [
+    // ── OpenAI Family ──
+    { pattern: 'gpt',        platform: 'gpt',        alias: ['chatgpt', 'ai', 'openai'],        desc: 'Chat with ChatGPT (OpenAI)',           react: '💬' },
+    { pattern: 'gpt4',       platform: 'gpt4',       alias: ['gpt-4', 'chatgpt4'],              desc: 'Chat with GPT-4',                     react: '🧠' },
+    { pattern: 'gpt4o',      platform: 'gpt4o',      alias: ['gpt-4o', 'omni'],                 desc: 'Chat with GPT-4o (Omni)',             react: '⚡' },
+    { pattern: 'gpt3',       platform: 'gpt3',       alias: ['gpt-3'],                          desc: 'Chat with GPT-3',                     react: '💭' },
+    { pattern: 'dalle',      platform: 'dalle',      alias: ['dall-e', 'dalle3'],               desc: 'Generate images with DALL·E',         react: '🎨' },
+
+    // ── DeepSeek ──
+    { pattern: 'deepseek',   platform: 'deepseek',   alias: ['ds', 'deep'],                     desc: 'Chat with DeepSeek AI',               react: '🧠' },
+    { pattern: 'deepseekr1', platform: 'deepseekr1', alias: ['r1', 'dsr1'],                     desc: 'Chat with DeepSeek R1 (reasoning)',   react: '🔬' },
+    { pattern: 'deepseekv3', platform: 'deepseekv3', alias: ['dsv3'],                           desc: 'Chat with DeepSeek V3',               react: '🛠️' },
+
+    // ── Google Family ──
+    { pattern: 'gemini',     platform: 'gemini',     alias: ['bard', 'google', 'googleai'],     desc: 'Chat with Google Gemini',             react: '✨' },
+    { pattern: 'geminipro',  platform: 'geminipro',  alias: ['gemini-pro', 'gpro'],             desc: 'Chat with Gemini Pro',                react: '🌟' },
+    { pattern: 'gemma',      platform: 'gemma',      alias: ['google-gemma'],                   desc: 'Chat with Google Gemma',              react: '💎' },
+    { pattern: 'palm',       platform: 'palm',       alias: ['palm2'],                          desc: 'Chat with Google PaLM 2',             react: '🌴' },
+
+    // ── Anthropic ──
+    { pattern: 'claude',     platform: 'claude',     alias: ['anthropic'],                      desc: 'Chat with Claude AI',                 react: '🎭' },
+    { pattern: 'claude3',    platform: 'claude3',    alias: ['claude-3', 'opus'],               desc: 'Chat with Claude 3 Opus',             react: '🎪' },
+    { pattern: 'sonnet',     platform: 'sonnet',     alias: ['claude-sonnet'],                  desc: 'Chat with Claude Sonnet',             react: '🎼' },
+    { pattern: 'haiku',      platform: 'haiku',      alias: ['claude-haiku'],                   desc: 'Chat with Claude Haiku',              react: '🍃' },
+
+    // ── Meta ──
+    { pattern: 'llama',      platform: 'llama',      alias: ['meta', 'metaai'],                 desc: 'Chat with Llama AI',                  react: '🦙' },
+    { pattern: 'llama2',     platform: 'llama2',     alias: ['llama-2'],                        desc: 'Chat with Llama 2',                   react: '🦙' },
+    { pattern: 'llama3',     platform: 'llama3',     alias: ['llama-3'],                        desc: 'Chat with Llama 3',                   react: '🦙' },
+    { pattern: 'llama31',    platform: 'llama31',    alias: ['llama-3.1'],                      desc: 'Chat with Llama 3.1',                 react: '🦙' },
+    { pattern: 'code llama', platform: 'codellama',  alias: ['codellama'],                      desc: 'Chat with Code Llama',                react: '💻' },
+
+    // ── xAI ──
+    { pattern: 'grok',       platform: 'grok',       alias: ['xai', 'grokai'],                  desc: 'Chat with Grok AI (xAI)',             react: '🚀' },
+    { pattern: 'grok2',      platform: 'grok2',      alias: ['grok-2'],                         desc: 'Chat with Grok 2',                    react: '🌌' },
+
+    // ── Mistral ──
+    { pattern: 'mistral',    platform: 'mistral',    desc: 'Chat with Mistral AI',                                                     react: '🌪️' },
+    { pattern: 'mixtral',    platform: 'mixtral',    alias: ['mixtral8x7b'],                    desc: 'Chat with Mixtral 8x7B',              react: '🌀' },
+    { pattern: 'codestral',  platform: 'codestral',  alias: ['mistral-code'],                   desc: 'Chat with Codestral (code AI)',       react: '⌨️' },
+
+    // ── Microsoft ──
+    { pattern: 'copilot',    platform: 'copilot',    alias: ['bing', 'bingai', 'mscopilot'],    desc: 'Chat with Microsoft Copilot',         react: '🧭' },
+    { pattern: 'phi',        platform: 'phi',        alias: ['phi3', 'microsoft-phi'],          desc: 'Chat with Microsoft Phi-3',           react: '🔷' },
+
+    // ── Perplexity ──
+    { pattern: 'perplexity', platform: 'perplexity', alias: ['pplx', 'ppl'],                    desc: 'Chat with Perplexity AI (web search)',react: '🔍' },
+    { pattern: 'sonar',      platform: 'sonar',      alias: ['pplx-sonar'],                     desc: 'Chat with Perplexity Sonar',          react: '📡' },
+
+    // ── Alibaba ──
+    { pattern: 'qwen',       platform: 'qwen',       alias: ['alibaba', 'tongyi'],              desc: 'Chat with Qwen AI (Alibaba)',         react: '🐉' },
+    { pattern: 'qwen2',      platform: 'qwen2',      alias: ['qwen-2'],                         desc: 'Chat with Qwen 2',                    react: '🐲' },
+
+    // ── Blackbox / Search AI ──
+    { pattern: 'blackbox',   platform: 'blackbox',   alias: ['bb'],                             desc: 'Chat with Blackbox AI',               react: '⬛' },
+    { pattern: 'you',        platform: 'you',        alias: ['youai', 'you-com'],               desc: 'Chat with You.com AI',                react: '🟣' },
+    { pattern: 'phind',      platform: 'phind',      alias: ['phindai'],                        desc: 'Chat with Phind (dev AI)',            react: '🔧' },
+
+    // ── Cohere ──
+    { pattern: 'cohere',     platform: 'cohere',     alias: ['command-r'],                      desc: 'Chat with Cohere AI',                 react: '🧩' },
+    { pattern: 'commandr',   platform: 'commandr',   alias: ['command-r-plus'],                 desc: 'Chat with Command R+',                react: '📦' },
+
+    // ── AI21 ──
+    { pattern: 'jamba',      platform: 'jamba',      alias: ['ai21'],                           desc: 'Chat with AI21 Jamba',                react: '🎷' },
+
+    // ── Open Source / HuggingFace ──
+    { pattern: 'huggingface',platform: 'huggingface',alias: ['hf', 'hugging'],                  desc: 'Chat with HuggingFace AI',            react: '🤗' },
+    { pattern: 'falcon',     platform: 'falcon',     alias: ['tii'],                            desc: 'Chat with Falcon AI (TII)',           react: '🦅' },
+    { pattern: 'vicuna',     platform: 'vicuna',     desc: 'Chat with Vicuna AI',                                                              react: '🐎' },
+    { pattern: 'alpaca',     platform: 'alpaca',     desc: 'Chat with Alpaca AI',                                                              react: '🦌' },
+    { pattern: 'wizardlm',   platform: 'wizardlm',   alias: ['wizard'],                         desc: 'Chat with WizardLM',                  react: '🧙' },
+    { pattern: 'openchat',   platform: 'openchat',   desc: 'Chat with OpenChat AI',                                                            react: '💌' },
+    { pattern: 'zephyr',     platform: 'zephyr',     desc: 'Chat with Zephyr AI',                                                              react: '🌬️' },
+    { pattern: 'dolphin',    platform: 'dolphin',    alias: ['dolphin-mixtral'],                desc: 'Chat with Dolphin AI',                react: '🐬' },
+    { pattern: 'nous',       platform: 'nous',       alias: ['hermes'],                         desc: 'Chat with Nous Hermes',               react: '🏛️' },
+    { pattern: 'openhermes', platform: 'openhermes', alias: ['hermes2'],                        desc: 'Chat with OpenHermes',                react: '🪽' },
+    { pattern: 'orca',       platform: 'orca',       alias: ['orca2'],                          desc: 'Chat with Orca AI',                   react: '🐋' },
+    { pattern: 'starling',   platform: 'starling',   desc: 'Chat with Starling AI',                                                            react: '⭐' },
+    { pattern: 'yi',         platform: 'yi',         alias: ['yi-34b'],                         desc: 'Chat with Yi AI (01.AI)',             react: '🀄' },
+
+    // ── China AI ──
+    { pattern: 'ernie',      platform: 'ernie',      alias: ['wenxin', 'baidu'],                desc: 'Chat with ERNIE Bot (Baidu)',         react: '🐼' },
+    { pattern: 'glm',        platform: 'glm',        alias: ['chatglm', 'zhipu'],               desc: 'Chat with ChatGLM (Zhipu)',           react: '🀄' },
+    { pattern: 'kimi',       platform: 'kimi',       alias: ['moonshot'],                       desc: 'Chat with Kimi AI (Moonshot)',        react: '🌙' },
+    { pattern: 'doubao',     platform: 'doubao',     alias: ['bytedance'],                      desc: 'Chat with Doubao (ByteDance)',        react: '🥟' },
+    { pattern: 'minimax',    platform: 'minimax',    desc: 'Chat with MiniMax AI',                                                            react: '📐' },
+    { pattern: 'baichuan',   platform: 'baichuan',   desc: 'Chat with Baichuan AI',                                                           react: '🏔️' },
+    { pattern: 'sense',      platform: 'sense',      alias: ['sensetime'],                      desc: 'Chat with SenseTime AI',              react: '🎯' },
+    { pattern: 'hunyuan',    platform: 'hunyuan',    alias: ['tencent'],                        desc: 'Chat with Hunyuan (Tencent)',         react: '🐧' },
+
+    // ── Dev / Code AI ──
+    { pattern: 'coder',      platform: 'coder',      alias: ['codeai'],                         desc: 'Chat with Code AI',                   react: '👨‍💻' },
+    { pattern: 'starcoder',  platform: 'starcoder',  alias: ['star'],                           desc: 'Chat with StarCoder',                 react: '✨' },
+    { pattern: 'devine',     platform: 'devine',     alias: ['devin'],                          desc: 'Chat with Devin AI (coding)',         react: '🛠️' },
+
+    // ── Image / Vision AI ──
+    { pattern: 'midjourney', platform: 'midjourney', alias: ['mj'],                             desc: 'Generate images with Midjourney',     react: '🖼️' },
+    { pattern: 'flux',       platform: 'flux',       desc: 'Generate images with FLUX',                                                       react: '🌊' },
+    { pattern: 'sd',         platform: 'sd',         alias: ['stablediffusion'],                desc: 'Generate images with Stable Diffusion',react: '🖌️' },
+    { pattern: 'leonardo',   platform: 'leonardo',   alias: ['leo-ai'],                         desc: 'Generate images with Leonardo AI',    react: '🎨' },
+
+    // ── Voice / Audio AI ──
+    { pattern: 'eleven',     platform: 'elevenlabs', alias: ['elevenlabs'],                     desc: 'ElevenLabs voice AI',                 react: '🔊' },
+    { pattern: 'suno',       platform: 'suno',       alias: ['suno-ai'],                        desc: 'Generate music with Suno AI',         react: '🎵' },
+    { pattern: 'udio',       platform: 'udio',       desc: 'Generate music with Udio',                                                        react: '🎶' },
+
+    // ── Misc / Aggregators ──
+    { pattern: 'poe',        platform: 'poe',        alias: ['poeai'],                          desc: 'Chat with Poe AI',                    react: '📮' },
+    { pattern: 'character',  platform: 'character',  alias: ['charai'],                         desc: 'Chat with Character.AI',              react: '👤' },
+    { pattern: 'jailbreak',  platform: 'jailbreak',  alias: ['jb', 'uncensored'],               desc: 'Chat with uncensored AI',             react: '🔓' },
+    { pattern: 'nano',       platform: 'nano',       alias: ['nano-ai'],                        desc: 'Chat with Nano AI',                   react: '🔬' },
+    { pattern: 'arena',      platform: 'arena',      alias: ['lmarena'],                        desc: 'Chat with LMSYS Arena',               react: '⚔️' },
+
+    // ── Default general chat ──
+    { pattern: 'chat',       platform: 'gpt',        alias: ['ask'],                            desc: 'General AI chat (defaults to GPT)',   react: '💬' },
+    { pattern: 'aichat',     platform: 'gpt',        alias: ['askai'],                          desc: 'Ask any AI anything',                 react: '🤖' },
+];
+
+// Register all commands
+AI_LIST.forEach(makeAICommand);
+
+// ─────────────────────────────────────────────
+// 📋 LIST COMMAND — show all AIs
+// ─────────────────────────────────────────────
 cmd({
-    'on': "body"
-}, async (conn, mek, m, { body, reply, config }) => {
+    pattern: 'ailist',
+    alias: ['ais', 'models', 'aihelp'],
+    desc: 'List all available AI commands',
+    category: 'ai',
+    react: '📋',
+    filename: import.meta.url
+}, async (conn, mek, m, { from, reply }) => {
+    const grouped = AI_LIST.reduce((acc, ai) => {
+        (acc[ai.pattern] = acc[ai.pattern] || ai).desc = ai.desc;
+        return acc;
+    }, {});
+
+    const lines = AI_LIST.map(ai => `• .${ai.pattern} — ${ai.desc}`).join('\n');
+
+    const out =
+`╭━━━〔 🤖 𝗔𝗜 𝗖𝗢𝗠𝗠𝗔𝗡𝗗𝗦 (${AI_LIST.length}+) 〕━━━╮
+│
+${lines.split('\n').join('\n│ ')}
+│
+╰━━━━━━━━━━━━━━━━━━━━━━━╯
+
+💖 ᴘᴏᴡᴇʀᴇᴅ ʙʏ AHMAD-MD ⚡`;
+
     try {
-        if (!body) return;
-
-        const text = body.trim();
-
-        // Skip prefixed messages
-        const usedPrefix = (config && config.PREFIX) ? config.PREFIX : '.';
-        if (text.startsWith(usedPrefix) || text.startsWith('.') ||
-            text.startsWith('!') || text.startsWith('#') || text.startsWith('/')) {
-            return;
-        }
-
-        const lower = text.toLowerCase();
-
-        for (const aiName of ALL_AI) {
-            // Case 1: "gemini hello" -> AI + question
-            if (lower.startsWith(aiName + " ")) {
-                const q = text.slice(aiName.length).trim();
-                if (!q) return reply(`❌ *Usage:* ${aiName} Your question`);
-                return await askAI(q, reply, `❌ *Usage:* ${aiName} Your question`);
-            }
-
-            // Case 2: exact match -> usage message
-            if (lower === aiName) {
-                return reply(`❌ *Usage:* ${aiName} Your question`);
-            }
-        }
-    } catch (error) {
-        console.error("AI no-prefix handler error:", error);
+        await conn.sendMessage(from, { text: out }, { quoted: mek });
+    } catch (_) {
+        await reply(out);
     }
 });
-
-// ============================================================
-// ===== PREFIX COMMANDS (50 TOTAL) =====
-// ============================================================
-
-// ---------- TOP FAMOUS AI (25) ----------
-
-cmd({ pattern: "gpt", desc: "Chat with GPT-3.5 AI", category: "ai", react: "🤖", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .gpt Your question"); });
-
-cmd({ pattern: "gpt4", desc: "Chat with GPT-4 AI", category: "ai", react: "🤖", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .gpt4 Your question"); });
-
-cmd({ pattern: "gpt4o", desc: "Chat with GPT-4o AI", category: "ai", react: "🤖", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .gpt4o Your question"); });
-
-cmd({ pattern: "chatgpt", desc: "Chat with ChatGPT AI", category: "ai", react: "🤖", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .chatgpt Your question"); });
-
-cmd({ pattern: "chatgptplus", desc: "Chat with ChatGPT Plus AI", category: "ai", react: "🤖", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .chatgptplus Your question"); });
-
-cmd({ pattern: "gemini", desc: "Chat with Google Gemini AI", category: "ai", react: "💎", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .gemini Your question"); });
-
-cmd({ pattern: "claude", desc: "Chat with Claude AI", category: "ai", react: "🎯", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .claude Your question"); });
-
-cmd({ pattern: "claude2", desc: "Chat with Claude 2 AI", category: "ai", react: "🎯", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .claude2 Your question"); });
-
-cmd({ pattern: "copilot", desc: "Chat with Microsoft Copilot AI", category: "ai", react: "✨", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .copilot Your question"); });
-
-cmd({ pattern: "mscopilot", desc: "Chat with Microsoft Copilot", category: "ai", react: "💙", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .mscopilot Your question"); });
-
-cmd({ pattern: "deepseek", desc: "Chat with DeepSeek AI", category: "ai", react: "🚀", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .deepseek Your question"); });
-
-cmd({ pattern: "deepseekcoder", desc: "Chat with DeepSeek Coder AI", category: "ai", react: "💻", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .deepseekcoder Your question"); });
-
-cmd({ pattern: "grokbeta", desc: "Chat with Grok Beta AI", category: "ai", react: "⚡", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .grokbeta Your question"); });
-
-cmd({ pattern: "bard", desc: "Chat with Google Bard AI", category: "ai", react: "🎭", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .bard Your question"); });
-
-cmd({ pattern: "palm2", desc: "Chat with PaLM 2 AI", category: "ai", react: "🌴", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .palm2 Your question"); });
-
-cmd({ pattern: "llama2", desc: "Chat with Llama 2 AI", category: "ai", react: "🦙", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .llama2 Your question"); });
-
-cmd({ pattern: "llama3", desc: "Chat with Llama 3 AI", category: "ai", react: "🦙", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .llama3 Your question"); });
-
-cmd({ pattern: "mistral", desc: "Chat with Mistral AI", category: "ai", react: "🌪️", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .mistral Your question"); });
-
-cmd({ pattern: "mixtral", desc: "Chat with Mixtral AI", category: "ai", react: "🌀", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .mixtral Your question"); });
-
-cmd({ pattern: "perplexity", desc: "Chat with Perplexity AI", category: "ai", react: "🔍", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .perplexity Your question"); });
-
-cmd({ pattern: "kimi", desc: "Chat with Kimi AI", category: "ai", react: "🌙", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .kimi Your question"); });
-
-cmd({ pattern: "qwen", desc: "Chat with Qwen AI", category: "ai", react: "🔥", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .qwen Your question"); });
-
-cmd({ pattern: "yi", desc: "Chat with Yi AI", category: "ai", react: "🌟", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .yi Your question"); });
-
-cmd({ pattern: "falcon", desc: "Chat with Falcon AI", category: "ai", react: "🦅", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .falcon Your question"); });
-
-cmd({ pattern: "wizard", desc: "Chat with Wizard AI", category: "ai", react: "🧙", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .wizard Your question"); });
-
-// ---------- PRO AI (25) ----------
-
-cmd({ pattern: "chatgptpro", desc: "Chat with ChatGPT Pro AI", category: "ai-pro", react: "🧠", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .chatgptpro Your question"); });
-
-cmd({ pattern: "geminipro", desc: "Chat with Gemini Pro AI", category: "ai-pro", react: "💎", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .geminipro Your question"); });
-
-cmd({ pattern: "claudepro", desc: "Chat with Claude Pro AI", category: "ai-pro", react: "🎯", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .claudepro Your question"); });
-
-cmd({ pattern: "grokpro", desc: "Chat with Grok Pro AI", category: "ai-pro", react: "⚡", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .grokpro Your question"); });
-
-cmd({ pattern: "copilotpro", desc: "Chat with Copilot Pro AI", category: "ai-pro", react: "💙", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .copilotpro Your question"); });
-
-cmd({ pattern: "deepseekpro", desc: "Chat with DeepSeek Pro AI", category: "ai-pro", react: "🚀", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .deepseekpro Your question"); });
-
-cmd({ pattern: "llamapro", desc: "Chat with Llama Pro AI", category: "ai-pro", react: "🦙", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .llamapro Your question"); });
-
-cmd({ pattern: "mistralpro", desc: "Chat with Mistral Pro AI", category: "ai-pro", react: "🌪️", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .mistralpro Your question"); });
-
-cmd({ pattern: "perplexitypro", desc: "Chat with Perplexity Pro AI", category: "ai-pro", react: "🔍", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .perplexitypro Your question"); });
-
-cmd({ pattern: "kimipro", desc: "Chat with Kimi Pro AI", category: "ai-pro", react: "🌙", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .kimipro Your question"); });
-
-cmd({ pattern: "qwenpro", desc: "Chat with Qwen Pro AI", category: "ai-pro", react: "🔥", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .qwenpro Your question"); });
-
-cmd({ pattern: "yipro", desc: "Chat with Yi Pro AI", category: "ai-pro", react: "🌟", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .yipro Your question"); });
-
-cmd({ pattern: "bardpro", desc: "Chat with Bard Pro AI", category: "ai-pro", react: "🎭", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .bardpro Your question"); });
-
-cmd({ pattern: "falconpro", desc: "Chat with Falcon Pro AI", category: "ai-pro", react: "🦅", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .falconpro Your question"); });
-
-cmd({ pattern: "wizardpro", desc: "Chat with Wizard Pro AI", category: "ai-pro", react: "🧙", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .wizardpro Your question"); });
-
-cmd({ pattern: "chatgptelite", desc: "Chat with ChatGPT Elite AI", category: "ai-pro", react: "👑", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .chatgptelite Your question"); });
-
-cmd({ pattern: "elitegpt", desc: "Chat with Elite ChatGPT", category: "ai-pro", react: "👑", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .elitegpt Your question"); });
-
-cmd({ pattern: "elitecopilot", desc: "Chat with Elite Copilot", category: "ai-pro", react: "🎯", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .elitecopilot Your question"); });
-
-cmd({ pattern: "elite", desc: "Chat with Elite AI Assistant", category: "ai-pro", react: "👑", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .elite Your question"); });
-
-cmd({ pattern: "proai", desc: "Chat with Pro AI", category: "ai-pro", react: "⚡", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .proai Your question"); });
-
-cmd({ pattern: "brain", desc: "Chat with Brain AI", category: "ai-pro", react: "🧠", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .brain Your question"); });
-
-cmd({ pattern: "smart", desc: "Chat with Smart AI", category: "ai-pro", react: "🧠", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .smart Your question"); });
-
-cmd({ pattern: "genius", desc: "Chat with Genius AI", category: "ai-pro", react: "🌟", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .genius Your question"); });
-
-cmd({ pattern: "ultra", desc: "Chat with Ultra AI", category: "ai-pro", react: "🔥", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .ultra Your question"); });
-
-cmd({ pattern: "nova", desc: "Chat with Nova AI", category: "ai-pro", react: "⭐", filename: __filename },
-async (conn, mek, m, { q, reply }) => { await askAI(q, reply, "❌ *Usage:* .nova Your question"); });
