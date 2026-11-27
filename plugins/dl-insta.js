@@ -7,25 +7,39 @@ const __filename = fileURLToPath(import.meta.url);
 // Bot name config
 const BOT_NAME = "AHMAD HASSAN";
 
-// 🔑 NEW API (Qadeer XTech)
+// 🔑 Qadeer XTech API (only)
 const IG_API = 'https://qadeer-xtech-apis.vercel.app/download/instagram/video';
 
 // Helper: fetch Instagram media via Qadeer API
 async function fetchFromQadeer(igUrl) {
-    const { data } = await axios.get(IG_API, {
-        params: { url: igUrl },
-        timeout: 30000,
-        headers: { 'User-Agent': 'Mozilla/5.0' }
-    });
+    try {
+        const { data, status } = await axios.get(IG_API, {
+            params: { url: igUrl },
+            timeout: 30000,
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            validateStatus: () => true
+        });
 
-    if (data?.status && (data?.video || data?.alternatives?.length)) {
-        return {
-            video: data.video || null,
-            thumbnail: data.thumbnail || null,
-            alternatives: data.alternatives || []
-        };
+        // API returned error status
+        if (status >= 400 || data?.status === false) {
+            console.error('Qadeer API error:', data?.error || data?.message || `HTTP ${status}`);
+            return { error: data?.error || data?.message || `API error (HTTP ${status})` };
+        }
+
+        // Valid media
+        if (data?.status && (data?.video || data?.alternatives?.length)) {
+            return {
+                video: data.video || null,
+                thumbnail: data.thumbnail || null,
+                alternatives: data.alternatives || []
+            };
+        }
+
+        return { error: 'No media found in response' };
+    } catch (e) {
+        console.error('Qadeer fetch exception:', e.message);
+        return { error: e.message };
     }
-    return null;
 }
 
 // Helper: send media (video or thumbnail fallback)
@@ -67,14 +81,11 @@ cmd({
 
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        const result = await fetchFromQadeer(url).catch(e => {
-            console.error('Qadeer API failed:', e.message);
-            return null;
-        });
+        const result = await fetchFromQadeer(url);
 
-        if (!result) {
+        if (result?.error) {
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return reply("❌ Failed to fetch media. Invalid link or private content.");
+            return reply(`❌ Failed to fetch media.\n\n⚠️ API Error: ${result.error}\n\n💡 Try again later or use a different link.`);
         }
 
         const sent = await sendIGMedia(conn, from, mek, result,
@@ -119,14 +130,11 @@ cmd({
 
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        const result = await fetchFromQadeer(igUrl).catch(e => {
-            console.error('Qadeer API failed:', e.message);
-            return null;
-        });
+        const result = await fetchFromQadeer(igUrl);
 
-        if (!result) {
+        if (result?.error) {
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return reply('❌ Unable to fetch the video. Please check the URL and try again.');
+            return reply(`❌ Unable to fetch video.\n\n⚠️ API Error: ${result.error}`);
         }
 
         await reply('Downloading Instagram media... Please wait 📥');
@@ -175,14 +183,11 @@ cmd({
 
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        const result = await fetchFromQadeer(url).catch(e => {
-            console.error('Qadeer API failed:', e.message);
-            return null;
-        });
+        const result = await fetchFromQadeer(url);
 
-        if (!result) {
+        if (result?.error) {
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return reply("❌ Failed to fetch media. Invalid link or private content.");
+            return reply(`❌ Failed to fetch media.\n\n⚠️ API Error: ${result.error}`);
         }
 
         // Primary media
@@ -194,7 +199,7 @@ cmd({
             `💖 ᴇɴᴊᴏʏ ʏᴏᴜʀ ᴍᴇᴅɪᴀ!\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
         );
 
-        // Alternatives (agar future mein multi-media aaye)
+        // Alternatives (future multi-media support)
         if (result.alternatives?.length) {
             for (const alt of result.alternatives) {
                 const altUrl = typeof alt === 'string' ? alt : alt?.url;
