@@ -1,22 +1,29 @@
 import { cmd } from '../command.js';
 import axios from 'axios';
 
-// 🔑 API Config
-const API_BASE = 'https://api-ahmadxmd.vercel.app';
-const API_KEY  = 'EXTRA';
+// 🔑 NEW API Config (Qadeer XTech)
+const API_BASE = 'https://qadeer-xtech-apis.vercel.app/api/qadeerai/ai';
+const FALLBACK_MODEL = 'chatgpt';
 
 // ─────────────────────────────────────────────
-// HELPER — call any platform endpoint
+// HELPER — call Qadeer AI endpoint (auto fallback to chatgpt)
 // ─────────────────────────────────────────────
 async function askAI(platform, q) {
-    try {
-        const apiUrl = `${API_BASE}/${platform}?q=${encodeURIComponent(q)}&key=${API_KEY}`;
-        const res = await axios.get(apiUrl, { timeout: 30000 });
-        if (res.data?.status && res.data?.result) return res.data.result;
-        if (res.data?.result) return res.data.result;
-        console.error(`⚠️ /${platform} bad response:`, res.data);
-    } catch (e) {
-        console.error(`⚠️ /${platform} failed:`, e.message);
+    // Try requested model first
+    const modelsToTry = [platform, FALLBACK_MODEL].filter((v, i, a) => v && a.indexOf(v) === i);
+
+    for (const model of modelsToTry) {
+        try {
+            const apiUrl = `${API_BASE}/${model}?prompt=${encodeURIComponent(q)}`;
+            const res = await axios.get(apiUrl, { timeout: 30000 });
+            if (res.data?.status && res.data?.result) {
+                return res.data.result;
+            }
+            if (res.data?.result) return res.data.result;
+            console.error(`⚠️ /${model} bad response:`, res.data);
+        } catch (e) {
+            console.error(`⚠️ /${model} failed:`, e.message);
+        }
     }
     return null;
 }
@@ -80,11 +87,11 @@ function makeAICommand({ pattern, platform, alias = [], desc, react = '🤖' }) 
 }
 
 // ─────────────────────────────────────────────
-// 🧠 70+ AI COMMANDS — FAMOUS MODELS
+// 🧠 70+ AI COMMANDS — FAMOUS MODELS (unchanged)
 // ─────────────────────────────────────────────
 const AI_LIST = [
     // ── OpenAI Family ──
-    { pattern: 'gpt',        platform: 'gpt',        alias: ['chatgpt', 'ai', 'openai'],        desc: 'Chat with ChatGPT (OpenAI)',           react: '💬' },
+    { pattern: 'gpt',        platform: 'chatgpt',    alias: ['chatgpt', 'ai', 'openai'],        desc: 'Chat with ChatGPT (OpenAI)',           react: '💬' },
     { pattern: 'gpt4',       platform: 'gpt4',       alias: ['gpt-4', 'chatgpt4'],              desc: 'Chat with GPT-4',                     react: '🧠' },
     { pattern: 'gpt4o',      platform: 'gpt4o',      alias: ['gpt-4o', 'omni'],                 desc: 'Chat with GPT-4o (Omni)',             react: '⚡' },
     { pattern: 'gpt3',       platform: 'gpt3',       alias: ['gpt-3'],                          desc: 'Chat with GPT-3',                     react: '💭' },
@@ -112,7 +119,7 @@ const AI_LIST = [
     { pattern: 'llama2',     platform: 'llama2',     alias: ['llama-2'],                        desc: 'Chat with Llama 2',                   react: '🦙' },
     { pattern: 'llama3',     platform: 'llama3',     alias: ['llama-3'],                        desc: 'Chat with Llama 3',                   react: '🦙' },
     { pattern: 'llama31',    platform: 'llama31',    alias: ['llama-3.1'],                      desc: 'Chat with Llama 3.1',                 react: '🦙' },
-    { pattern: 'code llama', platform: 'codellama',  alias: ['codellama'],                      desc: 'Chat with Code Llama',                react: '💻' },
+    { pattern: 'codellama',  platform: 'codellama',  alias: ['code-llama'],                     desc: 'Chat with Code Llama',                react: '💻' },
 
     // ── xAI ──
     { pattern: 'grok',       platform: 'grok',       alias: ['xai', 'grokai'],                  desc: 'Chat with Grok AI (xAI)',             react: '🚀' },
@@ -175,7 +182,7 @@ const AI_LIST = [
     // ── Dev / Code AI ──
     { pattern: 'coder',      platform: 'coder',      alias: ['codeai'],                         desc: 'Chat with Code AI',                   react: '👨‍💻' },
     { pattern: 'starcoder',  platform: 'starcoder',  alias: ['star'],                           desc: 'Chat with StarCoder',                 react: '✨' },
-    { pattern: 'devine',     platform: 'devine',     alias: ['devin'],                          desc: 'Chat with Devin AI (coding)',         react: '🛠️' },
+    { pattern: 'devin',      platform: 'devin',      alias: ['devine'],                         desc: 'Chat with Devin AI (coding)',         react: '🛠️' },
 
     // ── Image / Vision AI ──
     { pattern: 'midjourney', platform: 'midjourney', alias: ['mj'],                             desc: 'Generate images with Midjourney',     react: '🖼️' },
@@ -196,8 +203,8 @@ const AI_LIST = [
     { pattern: 'arena',      platform: 'arena',      alias: ['lmarena'],                        desc: 'Chat with LMSYS Arena',               react: '⚔️' },
 
     // ── Default general chat ──
-    { pattern: 'chat',       platform: 'gpt',        alias: ['ask'],                            desc: 'General AI chat (defaults to GPT)',   react: '💬' },
-    { pattern: 'aichat',     platform: 'gpt',        alias: ['askai'],                          desc: 'Ask any AI anything',                 react: '🤖' },
+    { pattern: 'chat',       platform: 'chatgpt',    alias: ['ask'],                            desc: 'General AI chat (defaults to GPT)',   react: '💬' },
+    { pattern: 'aichat',     platform: 'chatgpt',    alias: ['askai'],                          desc: 'Ask any AI anything',                 react: '🤖' },
 ];
 
 // Register all commands
@@ -214,11 +221,6 @@ cmd({
     react: '📋',
     filename: import.meta.url
 }, async (conn, mek, m, { from, reply }) => {
-    const grouped = AI_LIST.reduce((acc, ai) => {
-        (acc[ai.pattern] = acc[ai.pattern] || ai).desc = ai.desc;
-        return acc;
-    }, {});
-
     const lines = AI_LIST.map(ai => `• .${ai.pattern} — ${ai.desc}`).join('\n');
 
     const out =
