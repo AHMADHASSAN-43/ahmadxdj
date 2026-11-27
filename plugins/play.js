@@ -179,7 +179,7 @@ cmd({
 // ─────────────────────────────────────────────
 cmd({
     pattern: 'video',
-    alias: ['ytmp4', 'mp4', 'vid'],
+    alias: ['ytmp4', 'drama', 'vid'],
     desc: 'Download YouTube video (MP4)',
     category: 'download',
     react: '🎬',
