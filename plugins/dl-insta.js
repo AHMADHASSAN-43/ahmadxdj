@@ -7,33 +7,45 @@ const __filename = fileURLToPath(import.meta.url);
 // Bot name config
 const BOT_NAME = "AHMAD HASSAN";
 
-// Helper: fetch Instagram media via JerryCoder API
-async function fetchFromJerry(igUrl) {
-    const apiUrl = `https://jerrycoder.oggyapi.workers.dev/down/insta?url=${encodeURIComponent(igUrl)}`;
-    const { data } = await axios.get(apiUrl, { timeout: 20000 });
+// 🔑 NEW API (Qadeer XTech)
+const IG_API = 'https://qadeer-xtech-apis.vercel.app/download/instagram/video';
 
-    if (data?.status === 'success' && data?.data?.url) {
+// Helper: fetch Instagram media via Qadeer API
+async function fetchFromQadeer(igUrl) {
+    const { data } = await axios.get(IG_API, {
+        params: { url: igUrl },
+        timeout: 30000,
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+
+    if (data?.status && (data?.video || data?.alternatives?.length)) {
         return {
-            url: data.data.url,
-            type: data.data.type || 'video',
-            author: data.data.author || 'Unknown',
-            title: data.data.title || 'Instagram Media'
+            video: data.video || null,
+            thumbnail: data.thumbnail || null,
+            alternatives: data.alternatives || []
         };
     }
     return null;
 }
 
-// Helper: fetch via backup API (aswin-sparky)
-async function fetchFromSparky(igUrl) {
-    const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/igdl?url=${encodeURIComponent(igUrl)}`;
-    const response = await axios.get(apiUrl, { timeout: 20000 });
-
-    if (response.data?.status && response.data.data?.length) {
-        return response.data.data; // array of { type, url }
+// Helper: send media (video or thumbnail fallback)
+async function sendIGMedia(conn, from, mek, result, caption) {
+    if (result.video) {
+        await conn.sendMessage(from, {
+            video: { url: result.video },
+            caption
+        }, { quoted: mek });
+        return true;
     }
-    return null;
+    if (result.thumbnail) {
+        await conn.sendMessage(from, {
+            image: { url: result.thumbnail },
+            caption
+        }, { quoted: mek });
+        return true;
+    }
+    return false;
 }
-
 
 // ============================================================
 // COMMAND 1: igdl (main)
@@ -46,7 +58,7 @@ cmd({
     category: "download",
     use: ".igdl <Instagram URL>",
     filename: __filename
-}, async (conn, mek, m, { from, reply, args, q }) => {
+}, async (conn, mek, m, { from, reply, q }) => {
     try {
         const url = q || m.quoted?.text;
         if (!url || !url.includes("instagram.com")) {
@@ -55,47 +67,26 @@ cmd({
 
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        let success = false;
+        const result = await fetchFromQadeer(url).catch(e => {
+            console.error('Qadeer API failed:', e.message);
+            return null;
+        });
 
-        // Try new JerryCoder API first
-        try {
-            const result = await fetchFromJerry(url);
-            if (result) {
-                await conn.sendMessage(from, {
-                    [result.type === 'video' ? 'video' : 'image']: { url: result.url },
-                    caption: `╭━━❀ 📸 *ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* ❀━━╮\n┃\n` +
-                        `┃ 💎 ǫᴜᴀʟɪᴛʏ ➜ ʜᴅ\n┃\n╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                        `💖 ᴇɴᴊᴏʏ ʏᴏᴜʀ ᴍᴇᴅɪᴀ!\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
-                }, { quoted: mek });
-                success = true;
-            }
-        } catch (e) {
-            console.error('Jerry API failed:', e.message);
-        }
-
-        // Fallback to Sparky API
-        if (!success) {
-            try {
-                const items = await fetchFromSparky(url);
-                if (items && items.length) {
-                    for (const item of items) {
-                        await conn.sendMessage(from, {
-                            [item.type === 'video' ? 'video' : 'image']: { url: item.url },
-                            caption: `╭━━❀ 📸 *ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* ❀━━╮\n┃\n` +
-                                `┃ 💎 ǫᴜᴀʟɪᴛʏ ➜ ʜᴅ\n┃\n╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                                `💖 ᴇɴᴊᴏʏ ʏᴏᴜʀ ᴍᴇᴅɪᴀ!\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
-                        }, { quoted: mek });
-                    }
-                    success = true;
-                }
-            } catch (e) {
-                console.error('Sparky API failed:', e.message);
-            }
-        }
-
-        if (!success) {
+        if (!result) {
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
             return reply("❌ Failed to fetch media. Invalid link or private content.");
+        }
+
+        const sent = await sendIGMedia(conn, from, mek, result,
+            `╭━━❀ 📸 *ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* ❀━━╮\n┃\n` +
+            `┃ 💎 ǫᴜᴀʟɪᴛʏ ➜ ʜᴅ\n┃\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+            `💖 ᴇɴᴊᴏʏ ʏᴏᴜʀ ᴍᴇᴅɪᴀ!\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
+        );
+
+        if (!sent) {
+            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+            return reply("❌ No playable media found.");
         }
 
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
@@ -119,62 +110,39 @@ cmd({
     category: "download",
     use: ".igdl2 <Instagram video URL>",
     filename: __filename
-}, async (conn, mek, m, { from, reply, args }) => {
+}, async (conn, mek, m, { from, reply, q, args }) => {
     try {
-        const igUrl = args[0] || m.quoted?.text;
+        const igUrl = q || args[0] || m.quoted?.text;
         if (!igUrl || !igUrl.includes("instagram.com")) {
             return reply('❌ Please provide a valid Instagram URL.\n\nExample:\n.igdl2 https://instagram.com/reel/...');
         }
 
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        let success = false;
+        const result = await fetchFromQadeer(igUrl).catch(e => {
+            console.error('Qadeer API failed:', e.message);
+            return null;
+        });
 
-        // Try JerryCoder API
-        try {
-            const result = await fetchFromJerry(igUrl);
-            if (result) {
-                await reply('Downloading Instagram video... Please wait 📥');
-
-                await conn.sendMessage(from, {
-                    [result.type === 'video' ? 'video' : 'image']: { url: result.url },
-                    caption: `╭━━❀ 📸 *ɪɴsᴛᴀɢʀᴀᴍ ᴍᴇᴅɪᴀ* ❀━━╮\n┃\n` +
-                        `┃ 👤 ᴀᴜᴛʜᴏʀ ➜ ${result.author}\n` +
-                        `┃ 📝 ᴛɪᴛʟᴇ ➜ ${result.title?.slice(0, 100) || 'N/A'}\n` +
-                        `┃ 📹 ᴛʏᴘᴇ ➜ ${result.type}\n┃\n` +
-                        `╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                        `💖 ᴇɴᴊᴏʏ ʏᴏᴜʀ ᴍᴇᴅɪᴀ! 🌸\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
-                }, { quoted: mek });
-                success = true;
-            }
-        } catch (e) {
-            console.error('Jerry API failed:', e.message);
-        }
-
-        // Fallback: Sparky API
-        if (!success) {
-            try {
-                const items = await fetchFromSparky(igUrl);
-                if (items && items.length) {
-                    for (const item of items) {
-                        await conn.sendMessage(from, {
-                            [item.type === 'video' ? 'video' : 'image']: { url: item.url },
-                            caption: `╭━━❀ 📸 *ɪɴsᴛᴀɢʀᴀᴍ ᴍᴇᴅɪᴀ* ❀━━╮\n┃\n` +
-                                `┃ 📹 ᴛʏᴘᴇ ➜ ${item.type}\n┃\n` +
-                                `╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                                `💖 ᴇɴᴊᴏʏ ʏᴏᴜʀ ᴍᴇᴅɪᴀ! 🌸\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
-                        }, { quoted: mek });
-                    }
-                    success = true;
-                }
-            } catch (e) {
-                console.error('Sparky API failed:', e.message);
-            }
-        }
-
-        if (!success) {
+        if (!result) {
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
             return reply('❌ Unable to fetch the video. Please check the URL and try again.');
+        }
+
+        await reply('Downloading Instagram media... Please wait 📥');
+
+        const sent = await sendIGMedia(conn, from, mek, result,
+            `╭━━❀ 📸 *ɪɴsᴛᴀɢʀᴀᴍ ᴍᴇᴅɪᴀ* ❀━━╮\n┃\n` +
+            `┃ 📹 ᴛʏᴘᴇ ➜ ${result.video ? 'video' : 'image'}\n` +
+            `┃ 🔗 sᴏᴜʀᴄᴇ ➜ Qadeer XTech\n` +
+            `┃ 💎 ǫᴜᴀʟɪᴛʏ ➜ ʜᴅ\n┃\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+            `💖 ᴇɴᴊᴏʏ ʏᴏᴜʀ ᴍᴇᴅɪᴀ! 🌸\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
+        );
+
+        if (!sent) {
+            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+            return reply('❌ No playable media found.');
         }
 
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
@@ -198,7 +166,7 @@ cmd({
     category: "download",
     use: ".igdl3 <Instagram URL>",
     filename: __filename
-}, async (conn, mek, m, { from, reply, args, q }) => {
+}, async (conn, mek, m, { from, reply, q }) => {
     try {
         const url = q || m.quoted?.text;
         if (!url || !url.includes("instagram.com")) {
@@ -207,72 +175,43 @@ cmd({
 
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        let success = false;
+        const result = await fetchFromQadeer(url).catch(e => {
+            console.error('Qadeer API failed:', e.message);
+            return null;
+        });
 
-        // Try JerryCoder API first
-        try {
-            const result = await fetchFromJerry(url);
-            if (result) {
-                await conn.sendMessage(from, {
-                    [result.type === 'video' ? 'video' : 'image']: { url: result.url },
-                    caption: `╭━━❀ 📸 *ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* ❀━━╮\n┃\n` +
-                        `┃ 📹 ᴛʏᴘᴇ ➜ ${result.type}\n` +
-                        `┃ 👤 ᴀᴜᴛʜᴏʀ ➜ ${result.author}\n┃\n` +
-                        `╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                        `💖 ᴇɴᴊᴏʏ ʏᴏᴜʀ ᴍᴇᴅɪᴀ!\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
-                }, { quoted: mek });
-                success = true;
-            }
-        } catch (e) {
-            console.error('Jerry API failed:', e.message);
-        }
-
-        // Fallback: try old jawad-tech API
-        if (!success) {
-            try {
-                const apiUrl = `https://jawad-tech.vercel.app/igdl?url=${encodeURIComponent(url)}`;
-                const response = await axios.get(apiUrl, { timeout: 20000 });
-
-                if (response.data?.status && response.data.result?.length) {
-                    const mediaData = response.data.result;
-
-                    for (const item of mediaData) {
-                        const isVideo = item.contentType?.includes('video') || item.format === 'mp4';
-
-                        if (isVideo) {
-                            await conn.sendMessage(from, {
-                                video: { url: item.url },
-                                caption: `╭━━❀ 📸 *ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* ❀━━╮\n┃\n` +
-                                    `┃ 📹 ᴛʏᴘᴇ ➜ ᴠɪᴅᴇᴏ\n` +
-                                    `┃ 💾 sɪᴢᴇ ➜ ${(item.size / 1024 / 1024).toFixed(2)} MB\n` +
-                                    `┃ 🎞️ ꜰᴏʀᴍᴀᴛ ➜ ${item.format}\n┃\n` +
-                                    `╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                                    `💖 ᴇɴᴊᴏʏ ʏᴏᴜʀ ᴍᴇᴅɪᴀ!\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
-                            }, { quoted: mek });
-                        } else {
-                            await conn.sendMessage(from, {
-                                image: { url: item.url },
-                                caption: `╭━━❀ 📸 *ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* ❀━━╮\n┃\n` +
-                                    `┃ 🖼️ ᴛʏᴘᴇ ➜ ɪᴍᴀɢᴇ\n` +
-                                    `┃ 💾 sɪᴢᴇ ➜ ${(item.size / 1024).toFixed(2)} KB\n` +
-                                    `┃ 🎨 ꜰᴏʀᴍᴀᴛ ➜ ${item.format}\n┃\n` +
-                                    `╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                                    `💖 ᴇɴᴊᴏʏ ʏᴏᴜʀ ᴍᴇᴅɪᴀ!\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
-                            }, { quoted: mek });
-                        }
-
-                        await new Promise(r => setTimeout(r, 1000));
-                    }
-                    success = true;
-                }
-            } catch (e) {
-                console.error('Jawad API failed:', e.message);
-            }
-        }
-
-        if (!success) {
+        if (!result) {
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
             return reply("❌ Failed to fetch media. Invalid link or private content.");
+        }
+
+        // Primary media
+        const sent = await sendIGMedia(conn, from, mek, result,
+            `╭━━❀ 📸 *ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* ❀━━╮\n┃\n` +
+            `┃ 📹 ᴛʏᴘᴇ ➜ ${result.video ? 'video' : 'image'}\n` +
+            `┃ 🔗 sᴏᴜʀᴄᴇ ➜ Qadeer XTech\n┃\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+            `💖 ᴇɴᴊᴏʏ ʏᴏᴜʀ ᴍᴇᴅɪᴀ!\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
+        );
+
+        // Alternatives (agar future mein multi-media aaye)
+        if (result.alternatives?.length) {
+            for (const alt of result.alternatives) {
+                const altUrl = typeof alt === 'string' ? alt : alt?.url;
+                if (!altUrl) continue;
+                try {
+                    await conn.sendMessage(from, {
+                        video: { url: altUrl },
+                        caption: `📸 *ᴀʟᴛᴇʀɴᴀᴛɪᴠᴇ ᴍᴇᴅɪᴀ*\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
+                    }, { quoted: mek });
+                    await new Promise(r => setTimeout(r, 1000));
+                } catch (_) {}
+            }
+        }
+
+        if (!sent && !result.alternatives?.length) {
+            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+            return reply("❌ No playable media found.");
         }
 
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
