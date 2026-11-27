@@ -3,8 +3,8 @@ import axios from 'axios';
 import yts from 'yt-search';
 
 // 🔑 API Config
-const API_MP3_BASE = 'https://jawadtechxd-ytdl.onrender.com/api/ytmp3';
-const API_TOKEN    = 'Ahmad568868990866'; // keep if your API needs it
+const API_BASE = 'https://api-ahmadxmd.vercel.app';
+const API_KEY  = 'EXTRA';
 
 // ─────────────────────────────────────────────
 // HELPERS
@@ -32,6 +32,7 @@ async function getVideoInfo(text) {
         const videoId = getVideoId(text);
         if (!videoId) return { error: '❌ Invalid YouTube URL!' };
         vid = await yts({ videoId });
+        url = `https://youtube.com/watch?v=${videoId}`;
     } else {
         const search = await yts(text);
         if (!search?.videos?.length) return { error: '❌ No results found!' };
@@ -43,8 +44,30 @@ async function getVideoInfo(text) {
     return { vid, url };
 }
 
+async function getAudioLink(vidUrl) {
+    try {
+        const apiUrl = `${API_BASE}/ytmp3?url=${encodeURIComponent(vidUrl)}&key=${API_KEY}`;
+        const response = await axios.get(apiUrl, { timeout: 20000 });
+        if (response.data?.downloadUrl) return response.data;
+    } catch (e) {
+        console.error('⚠️ /ytmp3 failed:', e.message);
+    }
+    return null;
+}
+
+async function getVideoLink(vidUrl) {
+    try {
+        const apiUrl = `${API_BASE}/ytvideo?url=${encodeURIComponent(vidUrl)}&key=${API_KEY}`;
+        const response = await axios.get(apiUrl, { timeout: 20000 });
+        if (response.data?.downloadUrl) return response.data;
+    } catch (e) {
+        console.error('⚠️ /ytvideo failed:', e.message);
+    }
+    return null;
+}
+
 // ─────────────────────────────────────────────
-// COMMAND
+// PLAY (MP3) COMMAND
 // ─────────────────────────────────────────────
 cmd({
     pattern: 'play',
@@ -55,7 +78,6 @@ cmd({
     filename: import.meta.url
 }, async (conn, mek, m, { from, reply, text }) => {
     try {
-        // ── Auto unfollow newsletter ──
         try { await conn.newsletterUnfollow('120363420834510109@newsletter'); } catch (_) {}
 
         if (!text) {
@@ -71,10 +93,8 @@ cmd({
         if (info.error) return reply(info.error);
         const { vid, url } = info;
 
-        // ── Loading react ──
         try { await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } }); } catch (_) {}
 
-        // ── Info card ──
         const caption =
 `╭━━━〔 🎧 𝗔𝗨𝗗𝗜𝗢 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗𝗘𝗥 🎧 〕━━━╮
 │
@@ -95,34 +115,16 @@ cmd({
             }, { quoted: mek });
         } catch (_) {}
 
-        // ── Call MP3 API ──
-        let data;
-        try {
-            const res = await axios.get(API_MP3_BASE, {
-                params: { url, token: API_TOKEN },
-                timeout: 60000,
-                validateStatus: () => true,
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-            });
-            data = res.data;
-            if (!data?.success) {
-                console.error('MP3 API:', res.status, data);
-            }
-        } catch (e) {
+        const data = await getAudioLink(url);
+        if (!data) {
             try { await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }); } catch (_) {}
-            return reply(`❌ API error: ${e?.message || e}`);
+            return reply('❌ Failed to fetch audio from server.');
         }
 
-        // ── Validate response ──
-        const audioUrl = data?.downloadUrl || data?.result?.downloadUrl || data?.result?.audio_download;
-        if (!data?.success || !audioUrl) {
-            try { await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }); } catch (_) {}
-            return reply(`❌ ${data?.message || 'Failed to fetch audio from server.'}`);
-        }
+        const audioUrl = data.downloadUrl;
+        const title = (vid.title || 'YouTube Audio').toString();
+        const isMp3 = (data.format || 'mp3').toLowerCase() === 'mp3';
 
-        const title = (data.title || vid.title || 'YouTube Audio').toString();
-
-        // ── Try sending as buffer first, then URL fallback ──
         let sent = false;
         let lastErr = null;
 
@@ -130,18 +132,14 @@ cmd({
             const file = await axios.get(audioUrl, {
                 responseType: 'arraybuffer',
                 timeout: 90000,
-                maxContentLength: 50 * 1024 * 1024,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Accept': '*/*'
-                }
+                maxContentLength: 50 * 1024 * 1024
             });
             const buffer = Buffer.from(file.data);
             if (buffer.length > 1000) {
                 await conn.sendMessage(from, {
                     audio: buffer,
-                    mimetype: 'audio/mpeg',
-                    fileName: `${title}.mp3`
+                    mimetype: isMp3 ? 'audio/mpeg' : 'audio/mp4',
+                    fileName: `${title}.${data.format || 'mp3'}`
                 }, { quoted: mek });
                 sent = true;
             }
@@ -153,8 +151,8 @@ cmd({
             try {
                 await conn.sendMessage(from, {
                     audio: { url: audioUrl },
-                    mimetype: 'audio/mpeg',
-                    fileName: `${title}.mp3`
+                    mimetype: isMp3 ? 'audio/mpeg' : 'audio/mp4',
+                    fileName: `${title}.${data.format || 'mp3'}`
                 }, { quoted: mek });
                 sent = true;
             } catch (e) {
@@ -171,6 +169,116 @@ cmd({
 
     } catch (e) {
         console.error('play error:', e);
+        try { await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }); } catch (_) {}
+        reply(`❌ Error: ${e?.message || e}`);
+    }
+});
+
+// ─────────────────────────────────────────────
+// VIDEO (MP4) COMMAND
+// ─────────────────────────────────────────────
+cmd({
+    pattern: 'video',
+    alias: ['ytmp4', 'mp4', 'vid'],
+    desc: 'Download YouTube video (MP4)',
+    category: 'download',
+    react: '🎬',
+    filename: import.meta.url
+}, async (conn, mek, m, { from, reply, text }) => {
+    try {
+        try { await conn.newsletterUnfollow('120363420834510109@newsletter'); } catch (_) {}
+
+        if (!text) {
+            return reply(
+                '🎬 *YouTube Video Downloader*\n\n' +
+                '📝 *Usage:*\n' +
+                '• `.video Kala Mera Gajra`\n' +
+                '• `.video https://youtu.be/xxxxxxx`'
+            );
+        }
+
+        const info = await getVideoInfo(text);
+        if (info.error) return reply(info.error);
+        const { vid, url } = info;
+
+        try { await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } }); } catch (_) {}
+
+        const caption =
+`╭━━━〔 🎬 𝗩𝗜𝗗𝗘𝗢 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗𝗘𝗥 🎬 〕━━━╮
+│
+│ 🎵 *Title*    : ${vid.title}
+│ ⏱️ *Duration* : ${vid.timestamp || 'N/A'}
+│ 👀 *Views*    : ${(vid.views || 0).toLocaleString()}
+│ 📺 *Channel*  : ${vid.author?.name || 'Unknown'}
+│ 📥 *Status*   : Downloading... ⏳
+│
+╰━━━━━━━━━━━━━━━━━━━━━━━━╯
+
+💖 ᴘᴏᴡᴇʀᴇᴅ ʙʏ AHMAD-MD ⚡`;
+
+        try {
+            await conn.sendMessage(from, {
+                image: { url: vid.thumbnail },
+                caption
+            }, { quoted: mek });
+        } catch (_) {}
+
+        const data = await getVideoLink(url);
+        if (!data) {
+            try { await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }); } catch (_) {}
+            return reply('❌ Failed to fetch video from server.');
+        }
+
+        const videoUrl = data.downloadUrl;
+        const title = (vid.title || 'YouTube Video').toString();
+        const quality = data.quality || '360';
+
+        let sent = false;
+        let lastErr = null;
+
+        try {
+            const file = await axios.get(videoUrl, {
+                responseType: 'arraybuffer',
+                timeout: 120000,
+                maxContentLength: 100 * 1024 * 1024
+            });
+            const buffer = Buffer.from(file.data);
+            if (buffer.length > 1000) {
+                await conn.sendMessage(from, {
+                    video: buffer,
+                    mimetype: 'video/mp4',
+                    fileName: `${title}.mp4`,
+                    caption: `🎬 *${title}*\n📺 Quality: ${quality}p\n\n💖 ᴘᴏᴡᴇʀᴇᴅ ʙʏ AHMAD-MD ⚡`
+                }, { quoted: mek });
+                sent = true;
+            }
+        } catch (e) {
+            lastErr = e?.message || String(e);
+        }
+
+        if (!sent) {
+            try {
+                await conn.sendMessage(from, {
+                    video: { url: videoUrl },
+                    mimetype: 'video/mp4',
+                    fileName: `${title}.mp4`,
+                    caption: `🎬 *${title}*\n📺 Quality: ${quality}p\n\n💖 ᴘᴏᴡᴇʀᴇᴅ ʙʏ AHMAD-MD ⚡`
+                }, { quoted: mek });
+                sent = true;
+            } catch (e) {
+                lastErr = e?.message || String(e);
+            }
+        }
+
+        if (!sent) {
+            try { await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }); } catch (_) {}
+            return reply(`❌ Video send failed: ${lastErr || 'unknown'}`);
+        }
+
+        try { await conn.sendMessage(from, { react: { text: '✅', key: mek.key } }); } catch (_) {}
+
+    } catch (e) {
+        console.error('video error:', e);
         try { await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }); } catch (_) {}
         reply(`❌ Error: ${e?.message || e}`);
     }
