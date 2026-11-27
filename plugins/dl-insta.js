@@ -5,17 +5,30 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 
 // Bot name config
-const BOT_NAME = "AHMAD HASSAN";
+const BOT_NAME = "ǫᴀᴅᴇᴇʀ xᴅ";
 
 // 🔑 Qadeer XTech API (only)
 const IG_API = 'https://qadeer-xtech-apis.vercel.app/download/instagram/video';
+
+// Extract the first Instagram URL from any text (handles extra words,
+// forwarded captions and tracking params like ?igsh= / ?avpt=)
+function extractIgUrl(text) {
+    if (!text) return null;
+    const m = String(text).match(/https?:\/\/(?:www\.)?instagram\.com\/[^\s]+/i);
+    return m ? m[0] : null;
+}
+
+// True when the media URL is an image (photo post / carousel image)
+function isImageUrl(u) {
+    return /\.(jpe?g|png|webp)(\?|$)/i.test(u || '') || /\/v\/t39\.30808-6\//i.test(u || '');
+}
 
 // Helper: fetch Instagram media via Qadeer API
 async function fetchFromQadeer(igUrl) {
     try {
         const { data, status } = await axios.get(IG_API, {
             params: { url: igUrl },
-            timeout: 30000,
+            timeout: 60000,
             headers: { 'User-Agent': 'Mozilla/5.0' },
             validateStatus: () => true
         });
@@ -31,7 +44,8 @@ async function fetchFromQadeer(igUrl) {
             return {
                 video: data.video || null,
                 thumbnail: data.thumbnail || null,
-                alternatives: data.alternatives || []
+                alternatives: data.alternatives || [],
+                source: data.source || 'Qadeer XTech'
             };
         }
 
@@ -42,21 +56,42 @@ async function fetchFromQadeer(igUrl) {
     }
 }
 
+// Helper: send one media URL as video OR image (photo posts are jpg,
+// sending them as video fails on WhatsApp). Extension-less proxy links
+// (e.g. snapcdn) are retried as the opposite type on failure.
+async function sendOneMedia(conn, from, mek, url, caption) {
+    if (!url) return false;
+    const wantImage = isImageUrl(url);
+    try {
+        if (wantImage) {
+            await conn.sendMessage(from, { image: { url }, caption }, { quoted: mek });
+        } else {
+            await conn.sendMessage(from, { video: { url }, caption }, { quoted: mek });
+        }
+        return true;
+    } catch (e) {
+        try {
+            if (wantImage) {
+                await conn.sendMessage(from, { video: { url }, caption }, { quoted: mek });
+            } else {
+                await conn.sendMessage(from, { image: { url }, caption }, { quoted: mek });
+            }
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+}
+
 // Helper: send media (video or thumbnail fallback)
 async function sendIGMedia(conn, from, mek, result, caption) {
     if (result.video) {
-        await conn.sendMessage(from, {
-            video: { url: result.video },
-            caption
-        }, { quoted: mek });
-        return true;
+        const ok = await sendOneMedia(conn, from, mek, result.video, caption);
+        if (ok) return true;
+        console.error('Primary media send failed, trying thumbnail');
     }
     if (result.thumbnail) {
-        await conn.sendMessage(from, {
-            image: { url: result.thumbnail },
-            caption
-        }, { quoted: mek });
-        return true;
+        return await sendOneMedia(conn, from, mek, result.thumbnail, caption);
     }
     return false;
 }
@@ -74,8 +109,8 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, reply, q }) => {
     try {
-        const url = q || m.quoted?.text;
-        if (!url || !url.includes("instagram.com")) {
+        const url = extractIgUrl(q) || extractIgUrl(m.quoted?.text);
+        if (!url) {
             return reply("❌ Please provide/reply to an Instagram link");
         }
 
@@ -123,8 +158,8 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, reply, q, args }) => {
     try {
-        const igUrl = q || args[0] || m.quoted?.text;
-        if (!igUrl || !igUrl.includes("instagram.com")) {
+        const igUrl = extractIgUrl(q) || extractIgUrl(args?.[0]) || extractIgUrl(m.quoted?.text);
+        if (!igUrl) {
             return reply('❌ Please provide a valid Instagram URL.\n\nExample:\n.igdl2 https://instagram.com/reel/...');
         }
 
@@ -137,12 +172,10 @@ cmd({
             return reply(`❌ Unable to fetch video.\n\n⚠️ API Error: ${result.error}`);
         }
 
-        await reply('Downloading Instagram media... Please wait 📥');
-
         const sent = await sendIGMedia(conn, from, mek, result,
             `╭━━❀ 📸 *ɪɴsᴛᴀɢʀᴀᴍ ᴍᴇᴅɪᴀ* ❀━━╮\n┃\n` +
-            `┃ 📹 ᴛʏᴘᴇ ➜ ${result.video ? 'video' : 'image'}\n` +
-            `┃ 🔗 sᴏᴜʀᴄᴇ ➜ Qadeer XTech\n` +
+            `┃ 📹 ᴛʏᴘᴇ ➜ ${result.video && !isImageUrl(result.video) ? 'video' : 'image'}\n` +
+            `┃ 🔗 sᴏᴜʀᴄᴇ ➜ ${result.source}\n` +
             `┃ 💎 ǫᴜᴀʟɪᴛʏ ➜ ʜᴅ\n┃\n` +
             `╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
             `💖 ᴇɴᴊᴏʏ ʏᴏᴜʀ ᴍᴇᴅɪᴀ! 🌸\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
@@ -164,20 +197,20 @@ cmd({
 
 
 // ============================================================
-// COMMAND 3: igdl3 (posts, reels, stories)
+// COMMAND 3: igdl3 (posts, reels)
 // ============================================================
 cmd({
     pattern: "igdl3",
     alias: ["instagram3", "insta3", "ig3"],
     react: "⬇️",
-    desc: "Download Instagram posts, reels, and stories",
+    desc: "Download Instagram posts and reels",
     category: "download",
     use: ".igdl3 <Instagram URL>",
     filename: __filename
 }, async (conn, mek, m, { from, reply, q }) => {
     try {
-        const url = q || m.quoted?.text;
-        if (!url || !url.includes("instagram.com")) {
+        const url = extractIgUrl(q) || extractIgUrl(m.quoted?.text);
+        if (!url) {
             return reply("❌ Please provide/reply to a valid Instagram link");
         }
 
@@ -193,28 +226,29 @@ cmd({
         // Primary media
         const sent = await sendIGMedia(conn, from, mek, result,
             `╭━━❀ 📸 *ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* ❀━━╮\n┃\n` +
-            `┃ 📹 ᴛʏᴘᴇ ➜ ${result.video ? 'video' : 'image'}\n` +
-            `┃ 🔗 sᴏᴜʀᴄᴇ ➜ Qadeer XTech\n┃\n` +
+            `┃ 📹 ᴛʏᴘᴇ ➜ ${result.video && !isImageUrl(result.video) ? 'video' : 'image'}\n` +
+            `┃ 🔗 sᴏᴜʀᴄᴇ ➜ ${result.source}\n┃\n` +
             `╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
             `💖 ᴇɴᴊᴏʏ ʏᴏᴜʀ ᴍᴇᴅɪᴀ!\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
         );
 
-        // Alternatives (future multi-media support)
+        // Alternatives (carousel images / extra clips) — sent as image
+        // or video by extension, not always as video
+        let altSent = 0;
         if (result.alternatives?.length) {
             for (const alt of result.alternatives) {
                 const altUrl = typeof alt === 'string' ? alt : alt?.url;
                 if (!altUrl) continue;
                 try {
-                    await conn.sendMessage(from, {
-                        video: { url: altUrl },
-                        caption: `📸 *ᴀʟᴛᴇʀɴᴀᴛɪᴠᴇ ᴍᴇᴅɪᴀ*\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`
-                    }, { quoted: mek });
+                    await sendOneMedia(conn, from, mek, altUrl,
+                        `📸 *ᴀʟᴛᴇʀɴᴀᴛɪᴠᴇ ᴍᴇᴅɪᴀ*\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${BOT_NAME}*`);
+                    altSent++;
                     await new Promise(r => setTimeout(r, 1000));
                 } catch (_) {}
             }
         }
 
-        if (!sent && !result.alternatives?.length) {
+        if (!sent && !altSent) {
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
             return reply("❌ No playable media found.");
         }
