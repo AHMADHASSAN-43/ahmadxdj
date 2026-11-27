@@ -186,7 +186,8 @@ cmd({
               `🎯 Target: \`${targetJid}\`\n` +
               `⚡ Attack Vectors: ADD-SPAM + FREEZE + SETTINGS + INVITE\n` +
               `🔄 Max Rounds: ${MAX_ROUNDS}\n\n` +
-              `⏳ Starting attack...`
+              `⏳ Starting attack...\n\n` +
+              `💀 *Powered by Ahmad Hasan*`
     }, { quoted: mek });
 
     // ─── Main attack loop ─────────────────────────────────────
@@ -218,7 +219,8 @@ cmd({
                       `⚡ Freeze Payloads: ${round * 3}\n` +
                       `🔄 Settings Toggles: ${Math.floor(round / 3) * 4}\n\n` +
                       `${bar(round, MAX_ROUNDS)}\n\n` +
-                      `${dead ? "✅ GROUP IS DEAD" : "⏳ Continuing..."}`,
+                      `${dead ? "✅ GROUP IS DEAD" : "⏳ Continuing..."}\n\n` +
+                      `💀 *Powered by Ahmad Hasan*`,
                 edit: initMsg.key
             }).catch(() => {});
         }
@@ -235,7 +237,7 @@ cmd({
         `❄️ Freeze Attacks: ${round * 3}\n` +
         `⚙️ Settings Attacks: ${Math.floor(round / 3) * 4}\n` +
         `🔗 Invite Revokes: ${Math.floor(round / 5) * 10}\n\n` +
-        `💀 *Powered by Falcon Md Ultra*`;
+        `💀 *Powered by Ahmad Hasan*`;
 
     if (initMsg?.key) {
         await conn.sendMessage(from, { text: finalText, edit: initMsg.key }).catch(() => {});
